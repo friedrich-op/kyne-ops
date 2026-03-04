@@ -709,11 +709,20 @@ function RiderManagerView({ branch, onLogout }) {
   const [tab, setTab] = useState("log");
   const [orders, setOrders] = useState([]);
   const [saved, setSaved] = useState(false);
+  const [syncing, setSyncing] = useState(true);
   const [mode, setMode] = useState("today");
   const [customDate, setCustomDate] = useState("");
   const blank = { date: TODAY, rider: RIDERS[branch][0], product: "", cashValue: "", posValue: "", roadExpense: "", expenseNote: "", status: "Delivered" };
   const [form, setForm] = useState(blank);
   const set = (k, v) => setForm((p) => ({ ...p, [k]: v }));
+
+  useEffect(() => {
+    setSyncing(true);
+    sheetGet("Orders")
+      .then(data => setOrders(data.filter(o => o.branch === branch)))
+      .catch(() => {})
+      .finally(() => setSyncing(false));
+  }, [branch]);
 
   function handleSubmit() {
     if (!form.date || !form.product) return;
@@ -722,6 +731,7 @@ function RiderManagerView({ branch, onLogout }) {
     setForm(blank);
     setSaved(true);
     setTimeout(() => setSaved(false), 3000);
+    sheetAdd("Orders", newOrder).catch(() => {});
   }
 
   const filtered = filterOrders(orders, mode, customDate);
@@ -734,6 +744,7 @@ function RiderManagerView({ branch, onLogout }) {
   return (
     <div className="grid-bg" style={{ minHeight: "100vh", background: "var(--bg)", color: "var(--text)", fontFamily: "var(--body)" }}>
       <style>{GS}</style>
+      {syncing && <div style={{ background: "rgba(30,111,255,0.12)", borderBottom: "1px solid var(--blue)", padding: "6px", textAlign: "center", fontFamily: "var(--mono)", fontSize: "10px", color: "var(--blue-light)", letterSpacing: "0.1em" }}>⟳ SYNCING WITH SHEETS...</div>}
       <TopNav subtitle={`${branch} · RIDER MANAGER`} tabs={tabs} activeTab={tab} setActiveTab={setTab} onLogout={onLogout} />
       <div className="content" style={{ maxWidth: "720px", margin: "0 auto", padding: "20px 16px" }}>
 
@@ -910,6 +921,7 @@ function ManagerView({ branch, onLogout }) {
   const [orders, setOrders] = useState([]);
   const [expenses, setExpenses] = useState([]);
   const [remittances, setRemittances] = useState([]);
+  const [syncing, setSyncing] = useState(true);
   const [mode, setMode] = useState("today");
   const [customDate, setCustomDate] = useState("");
   const [showExpForm, setShowExpForm] = useState(false);
@@ -919,17 +931,38 @@ function ManagerView({ branch, onLogout }) {
   const [expForm, setExpForm] = useState(blankExp);
   const [remitForm, setRemitForm] = useState(blankRemit);
 
-  function markPaid(id) { setOrders((p) => p.map((o) => o.id === id ? { ...o, riderRemitted: true } : o)); }
+  useEffect(() => {
+    setSyncing(true);
+    Promise.all([sheetGet("Orders"), sheetGet("Expenses"), sheetGet("Remittances")])
+      .then(([o, e, r]) => {
+        setOrders(o.filter(x => x.branch === branch));
+        setExpenses(e.filter(x => x.branch === branch));
+        setRemittances(r.filter(x => x.branch === branch));
+      })
+      .catch(() => {})
+      .finally(() => setSyncing(false));
+  }, [branch]);
+
+  function markPaid(id) {
+    const updated = orders.map((o) => String(o.id) === String(id) ? { ...o, riderRemitted: true } : o);
+    setOrders(updated);
+    const order = updated.find(o => String(o.id) === String(id));
+    if (order) sheetUpdate("Orders", { ...order, riderRemitted: true }).catch(() => {});
+  }
   function saveExpense() {
     if (!expForm.date || !expForm.description || !expForm.amount) return;
-    setExpenses((p) => [{ ...expForm, id: Date.now(), amount: Number(expForm.amount), branch }, ...p]);
+    const newExp = { ...expForm, id: Date.now(), amount: Number(expForm.amount), branch };
+    setExpenses((p) => [newExp, ...p]);
     setExpForm(blankExp); setShowExpForm(false);
+    sheetAdd("Expenses", newExp).catch(() => {});
   }
   function saveRemittance() {
     if (!remitForm.remittedAmount || !remitForm.txID) return;
     const expected = calcBranchExpected(filterOrders(orders, "today", ""));
-    setRemittances((p) => [{ ...remitForm, id: Date.now(), branch, expectedAmount: expected, remittedAmount: Number(remitForm.remittedAmount) }, ...p]);
+    const newRemit = { ...remitForm, id: Date.now(), branch, expectedAmount: expected, remittedAmount: Number(remitForm.remittedAmount) };
+    setRemittances((p) => [newRemit, ...p]);
     setRemitForm(blankRemit); setRemitSaved(true); setTimeout(() => setRemitSaved(false), 3000);
+    sheetAdd("Remittances", newRemit).catch(() => {});
   }
 
   const fOrders   = filterOrders(orders, mode, customDate);
@@ -959,6 +992,7 @@ function ManagerView({ branch, onLogout }) {
   return (
     <div className="grid-bg" style={{ minHeight: "100vh", background: "var(--bg)", color: "var(--text)", fontFamily: "var(--body)" }}>
       <style>{GS}</style>
+      {syncing && <div style={{ background: "rgba(30,111,255,0.12)", borderBottom: "1px solid var(--blue)", padding: "6px", textAlign: "center", fontFamily: "var(--mono)", fontSize: "10px", color: "var(--blue-light)", letterSpacing: "0.1em" }}>⟳ SYNCING WITH SHEETS...</div>}
       <TopNav subtitle={`${branch} · BRANCH MANAGER`} tabs={tabs} activeTab={tab} setActiveTab={setTab} onLogout={onLogout} />
       <div className="content" style={{ maxWidth: "960px", margin: "0 auto", padding: "20px 16px" }}>
 
@@ -1244,6 +1278,15 @@ function BossView({ onLogout }) {
   const [orders, setOrders] = useState([]);
   const [expenses, setExpenses] = useState([]);
   const [allRemittances, setAllRemittances] = useState([]);
+  const [syncing, setSyncing] = useState(true);
+
+  useEffect(() => {
+    setSyncing(true);
+    Promise.all([sheetGet("Orders"), sheetGet("Expenses"), sheetGet("Remittances")])
+      .then(([o, e, r]) => { setOrders(o); setExpenses(e); setAllRemittances(r); })
+      .catch(() => {})
+      .finally(() => setSyncing(false));
+  }, []);
 
   const fOrders   = filterOrders(orders, mode, customDate);
   const fExpenses = filterOrders(expenses, mode, customDate);
@@ -1287,6 +1330,7 @@ function BossView({ onLogout }) {
   return (
     <div className="grid-bg" style={{ minHeight: "100vh", background: "var(--bg)", color: "var(--text)", fontFamily: "var(--body)" }}>
       <style>{GS}</style>
+      {syncing && <div style={{ background: "rgba(30,111,255,0.12)", borderBottom: "1px solid var(--blue)", padding: "6px", textAlign: "center", fontFamily: "var(--mono)", fontSize: "10px", color: "var(--blue-light)", letterSpacing: "0.1em" }}>⟳ SYNCING WITH SHEETS...</div>}
       <TopNav subtitle="ALL BRANCHES · BOSS" tabs={tabs} activeTab={tab} setActiveTab={setTab} onLogout={onLogout} />
       <div className="content" style={{ maxWidth: "960px", margin: "0 auto", padding: "20px 16px" }}>
 
