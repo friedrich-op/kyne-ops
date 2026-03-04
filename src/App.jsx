@@ -285,6 +285,19 @@ function KyneLogo({ size = 32 }) {
   );
 }
 
+// ─── LOADING SCREEN ───────────────────────────────────────────────────────────
+function LoadingScreen() {
+  return (
+    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "var(--bg)", fontFamily: "var(--body)" }}>
+      <style>{GS}</style>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      <KyneLogo size={48} />
+      <div style={{ marginTop: "24px", width: "32px", height: "32px", border: "2px solid var(--text-faint)", borderTopColor: "var(--blue)", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+      <p style={{ fontFamily: "var(--mono)", fontSize: "10px", color: "var(--text-faint)", marginTop: "16px", letterSpacing: "0.15em" }}>LOADING DATA...</p>
+    </div>
+  );
+}
+
 // ─── STATUS CONFIG ─────────────────────────────────────────────────────────────
 const STATUS_TAG = {
   Delivered:       { bg: "rgba(30,111,255,0.12)", color: "var(--blue-light)", border: "var(--blue)" },
@@ -695,7 +708,6 @@ function LoginScreen({ onLogin }) {
 function RiderManagerView({ branch, onLogout }) {
   const [tab, setTab] = useState("log");
   const [orders, setOrders] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [saved, setSaved] = useState(false);
   const [mode, setMode] = useState("today");
   const [customDate, setCustomDate] = useState("");
@@ -703,21 +715,13 @@ function RiderManagerView({ branch, onLogout }) {
   const [form, setForm] = useState(blank);
   const set = (k, v) => setForm((p) => ({ ...p, [k]: v }));
 
-  useEffect(() => {
-    sheetGet("Orders").then(data => {
-      setOrders(data.filter(o => o.branch === branch));
-      setLoading(false);
-    });
-  }, [branch]);
-
-  async function handleSubmit() {
+  function handleSubmit() {
     if (!form.date || !form.product) return;
     const newOrder = { ...form, id: Date.now(), cashValue: Number(form.cashValue) || 0, posValue: Number(form.posValue) || 0, roadExpense: Number(form.roadExpense) || 0, riderRemitted: false, branch };
     setOrders((p) => [newOrder, ...p]);
     setForm(blank);
     setSaved(true);
     setTimeout(() => setSaved(false), 3000);
-    await sheetAdd("Orders", newOrder);
   }
 
   const filtered = filterOrders(orders, mode, customDate);
@@ -726,8 +730,6 @@ function RiderManagerView({ branch, onLogout }) {
   const totalRoad = filtered.reduce((s, o) => s + (o.roadExpense || 0), 0);
   const tabs = [{ id: "log", label: "Log Order" }, { id: "orders", label: "Orders" }, { id: "riders", label: "Riders" }];
   const remitPreview = Math.max(0, (Number(form.cashValue) || 0) - (Number(form.roadExpense) || 0)) + (Number(form.posValue) || 0);
-
-  if (loading) return <LoadingScreen />;
 
   return (
     <div className="grid-bg" style={{ minHeight: "100vh", background: "var(--bg)", color: "var(--text)", fontFamily: "var(--body)" }}>
@@ -908,7 +910,6 @@ function ManagerView({ branch, onLogout }) {
   const [orders, setOrders] = useState([]);
   const [expenses, setExpenses] = useState([]);
   const [remittances, setRemittances] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [mode, setMode] = useState("today");
   const [customDate, setCustomDate] = useState("");
   const [showExpForm, setShowExpForm] = useState(false);
@@ -918,39 +919,17 @@ function ManagerView({ branch, onLogout }) {
   const [expForm, setExpForm] = useState(blankExp);
   const [remitForm, setRemitForm] = useState(blankRemit);
 
-  useEffect(() => {
-    Promise.all([
-      sheetGet("Orders"),
-      sheetGet("Expenses"),
-      sheetGet("Remittances"),
-    ]).then(([o, e, r]) => {
-      setOrders(o.filter(x => x.branch === branch));
-      setExpenses(e.filter(x => x.branch === branch));
-      setRemittances(r.filter(x => x.branch === branch));
-      setLoading(false);
-    });
-  }, [branch]);
-
-  async function markPaid(id) {
-    const updated = orders.map((o) => o.id === String(id) || o.id === id ? { ...o, riderRemitted: true } : o);
-    setOrders(updated);
-    const order = updated.find(o => String(o.id) === String(id));
-    if (order) await sheetUpdate("Orders", { ...order, riderRemitted: true });
-  }
-  async function saveExpense() {
+  function markPaid(id) { setOrders((p) => p.map((o) => o.id === id ? { ...o, riderRemitted: true } : o)); }
+  function saveExpense() {
     if (!expForm.date || !expForm.description || !expForm.amount) return;
-    const newExp = { ...expForm, id: Date.now(), amount: Number(expForm.amount), branch };
-    setExpenses((p) => [newExp, ...p]);
+    setExpenses((p) => [{ ...expForm, id: Date.now(), amount: Number(expForm.amount), branch }, ...p]);
     setExpForm(blankExp); setShowExpForm(false);
-    await sheetAdd("Expenses", newExp);
   }
-  async function saveRemittance() {
+  function saveRemittance() {
     if (!remitForm.remittedAmount || !remitForm.txID) return;
     const expected = calcBranchExpected(filterOrders(orders, "today", ""));
-    const newRemit = { ...remitForm, id: Date.now(), branch, expectedAmount: expected, remittedAmount: Number(remitForm.remittedAmount) };
-    setRemittances((p) => [newRemit, ...p]);
+    setRemittances((p) => [{ ...remitForm, id: Date.now(), branch, expectedAmount: expected, remittedAmount: Number(remitForm.remittedAmount) }, ...p]);
     setRemitForm(blankRemit); setRemitSaved(true); setTimeout(() => setRemitSaved(false), 3000);
-    await sheetAdd("Remittances", newRemit);
   }
 
   const fOrders   = filterOrders(orders, mode, customDate);
@@ -976,8 +955,6 @@ function ManagerView({ branch, onLogout }) {
     { id: "riders",     label: "Riders" },
     { id: "expenses",   label: "Expenses" },
   ];
-
-  if (loading) return <LoadingScreen />;
 
   return (
     <div className="grid-bg" style={{ minHeight: "100vh", background: "var(--bg)", color: "var(--text)", fontFamily: "var(--body)" }}>
@@ -1267,20 +1244,6 @@ function BossView({ onLogout }) {
   const [orders, setOrders] = useState([]);
   const [expenses, setExpenses] = useState([]);
   const [allRemittances, setAllRemittances] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    Promise.all([
-      sheetGet("Orders"),
-      sheetGet("Expenses"),
-      sheetGet("Remittances"),
-    ]).then(([o, e, r]) => {
-      setOrders(o);
-      setExpenses(e);
-      setAllRemittances(r);
-      setLoading(false);
-    });
-  }, []);
 
   const fOrders   = filterOrders(orders, mode, customDate);
   const fExpenses = filterOrders(expenses, mode, customDate);
@@ -1320,8 +1283,6 @@ function BossView({ onLogout }) {
     { id: "riders",      label: "All Riders" },
     { id: "orders",      label: "Orders" },
   ];
-
-  if (loading) return <LoadingScreen />;
 
   return (
     <div className="grid-bg" style={{ minHeight: "100vh", background: "var(--bg)", color: "var(--text)", fontFamily: "var(--body)" }}>
