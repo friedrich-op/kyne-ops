@@ -15,12 +15,14 @@ const RIDERS = {
   KETU: ["Semilore", "Miracle", "Yusuf", "Dickson", "Tony", "Habeb", "Lawal", "Ayomide"],
 };
 
-// ─── TODAY using local date (not UTC) ─────────────────────────────────────────
+// ─── TODAY using local Nigeria time (WAT = UTC+1) ─────────────────────────────
 const TODAY = (() => {
+  // Force WAT (UTC+1) — add 60 mins to UTC to get Nigeria local date
   const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
+  const wat = new Date(d.getTime() + (60 * 60 * 1000)); // UTC+1
+  const y   = wat.getUTCFullYear();
+  const m   = String(wat.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(wat.getUTCDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
 })();
 
