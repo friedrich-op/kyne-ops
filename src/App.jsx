@@ -64,8 +64,16 @@ function getBonusRate(n) {
 const fmt = (n) => `₦${Number(n || 0).toLocaleString("en-NG")}`;
 
 function calcRiderOwed(order) {
+  // What rider must remit to branch = cash collected - road expense + POS
   if (order.status !== "Delivered") return 0;
   return Math.max(0, (order.cashValue || 0) - (order.roadExpense || 0)) + (order.posValue || 0);
+}
+function calcOutstanding(order) {
+  // Amount customer still owes = price - (cash + POS collected)
+  if (order.status !== "Delivered") return 0;
+  const price = order.price || 0;
+  const collected = (order.cashValue || 0) + (order.posValue || 0);
+  return Math.max(0, price - collected);
 }
 
 // ─── GOOGLE SHEETS ────────────────────────────────────────────────────────────
@@ -104,6 +112,7 @@ async function sheetGet(tab) {
       amount:         Number(row.amount)          || 0,
       expectedAmount: Number(row.expectedAmount)  || 0,
       remittedAmount: Number(row.remittedAmount)  || 0,
+      price:          Number(row.price)          || 0,
       riderRemitted:  row.riderRemitted === "true" || row.riderRemitted === true,
     }));
   } catch { return []; }
@@ -399,6 +408,7 @@ function OrderRow({ order, onMarkPaid }) {
             <span style={{ fontSize:"11px", color:"var(--text-faint)" }}>{order.date}</span>
           </div>
           <div style={{ display:"flex", gap:"12px", flexWrap:"wrap" }}>
+            {order.price > 0      && <span style={{ fontSize:"11px", color:"var(--text-dim)", fontWeight:600 }}>🏷 {fmt(order.price)}</span>}
             {order.cashValue > 0  && <span style={{ fontSize:"11px", color:"var(--text-dim)" }}>💵 {fmt(order.cashValue)}</span>}
             {order.posValue > 0   && <span style={{ fontSize:"11px", color:"var(--text-dim)" }}>💳 {fmt(order.posValue)}</span>}
             {order.roadExpense > 0 && <span style={{ fontSize:"11px", color:"var(--text-faint)" }}>🛣 {fmt(order.roadExpense)} · {order.expenseNote}</span>}
@@ -409,7 +419,9 @@ function OrderRow({ order, onMarkPaid }) {
             {fmt((order.cashValue||0)+(order.posValue||0))}
           </p>
           {order.status==="Delivered" && !order.riderRemitted &&
-            <p style={{ fontSize:"11px", color:"var(--amber)", marginTop:"2px" }}>owes {fmt(owed)}</p>}
+            <p style={{ fontSize:"11px", color:"var(--amber)", marginTop:"2px" }}>remits {fmt(owed)}</p>}
+          {order.status==="Delivered" && calcOutstanding(order) > 0 &&
+            <p style={{ fontSize:"11px", color:"var(--red)", marginTop:"2px", fontWeight:600 }}>cust owes {fmt(calcOutstanding(order))}</p>}
         </div>
       </div>
       {order.status==="Delivered" && !order.riderRemitted && onMarkPaid && (
@@ -584,7 +596,7 @@ function RiderManagerView({ branch, onLogout }) {
   const [saved, setSaved]       = useState(false);
   const [mode, setMode]         = useState("today");
   const [customDate, setCustomDate] = useState("");
-  const blank = { date:TODAY, rider:RIDERS[branch][0], product:"", cashValue:"", posValue:"", roadExpense:"", expenseNote:"", status:"Delivered" };
+  const blank = { date:TODAY, rider:RIDERS[branch][0], product:"", price:"", cashValue:"", posValue:"", roadExpense:"", expenseNote:"", status:"Delivered" };
   const [form, setForm] = useState(blank);
   const set = (k,v) => setForm(p => ({...p,[k]:v}));
 
@@ -595,7 +607,7 @@ function RiderManagerView({ branch, onLogout }) {
 
   function handleSubmit() {
     if (!form.date || !form.product) return;
-    const o = { ...form, id:Date.now(), cashValue:Number(form.cashValue)||0, posValue:Number(form.posValue)||0, roadExpense:Number(form.roadExpense)||0, riderRemitted:false, branch };
+    const o = { ...form, id:Date.now(), price:Number(form.price)||0, cashValue:Number(form.cashValue)||0, posValue:Number(form.posValue)||0, roadExpense:Number(form.roadExpense)||0, riderRemitted:false, branch };
     setOrders(p => [o,...p]);
     setForm(blank); setSaved(true); setTimeout(()=>setSaved(false),3000);
     sheetAdd("Orders", o).catch(()=>{});
@@ -646,6 +658,10 @@ function RiderManagerView({ branch, onLogout }) {
                   <label className="k-label">Product Description</label>
                   <input className="k-input" placeholder="e.g. Electronics, clothing..." value={form.product} onChange={e=>set("product",e.target.value)}/>
                 </div>
+                <div style={{ gridColumn:"1/-1" }}>
+                  <label className="k-label">Item Price (₦)</label>
+                  <input type="number" className="k-input" placeholder="Full selling price of the item" value={form.price} onChange={e=>set("price",e.target.value)}/>
+                </div>
               </div>
 
               <div style={{ height:"1px", background:"var(--border)", margin:"0 0 16px"}}/>
@@ -665,7 +681,7 @@ function RiderManagerView({ branch, onLogout }) {
                 <div><label className="k-label">Used for?</label><input className="k-input" placeholder="Fuel, toll, parking..." value={form.expenseNote} onChange={e=>set("expenseNote",e.target.value)}/></div>
               </div>
 
-              {(form.cashValue || form.posValue) && (
+              {(form.cashValue || form.posValue || form.price) && (
                 <div style={{ background:"var(--blue-pale)", border:"1.5px solid var(--blue-pale2)",
                   borderRadius:"var(--r)", padding:"14px", marginBottom:"20px" }}>
                   <p style={{ fontSize:"11px", fontWeight:600, color:"var(--blue)", textTransform:"uppercase",
@@ -682,10 +698,23 @@ function RiderManagerView({ branch, onLogout }) {
                     </div>
                   ))}
                   <div style={{ height:"1px", background:"var(--blue-pale2)", margin:"8px 0"}}/>
-                  <div style={{ display:"flex", justifyContent:"space-between" }}>
-                    <span style={{ fontSize:"12px", fontWeight:600, color:"var(--text-dim)" }}>Rider owes total</span>
+                  <div style={{ display:"flex", justifyContent:"space-between", marginBottom:"4px" }}>
+                    <span style={{ fontSize:"12px", fontWeight:600, color:"var(--text-dim)" }}>Rider remits</span>
                     <span style={{ fontFamily:"var(--display)", fontSize:"15px", fontWeight:800, color:"var(--blue)" }}>{fmt(preview)}</span>
                   </div>
+                  {form.price && Number(form.price) > 0 && (() => {
+                    const outstanding = Math.max(0, Number(form.price) - (Number(form.cashValue)||0) - (Number(form.posValue)||0));
+                    return outstanding > 0 ? (
+                      <div style={{ marginTop:"8px", background:"#fef2f2", border:"1px solid #fecaca", borderRadius:"var(--r-sm)", padding:"8px 10px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                        <span style={{ fontSize:"12px", fontWeight:600, color:"var(--red)" }}>⚠ Customer owes</span>
+                        <span style={{ fontFamily:"var(--display)", fontSize:"14px", fontWeight:800, color:"var(--red)" }}>{fmt(outstanding)}</span>
+                      </div>
+                    ) : (
+                      <div style={{ marginTop:"8px", background:"#ecfdf5", border:"1px solid #a7f3d0", borderRadius:"var(--r-sm)", padding:"8px 10px" }}>
+                        <span style={{ fontSize:"12px", fontWeight:600, color:"var(--green)" }}>✓ Fully paid</span>
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
 
@@ -831,7 +860,11 @@ function ManagerView({ branch, onLogout }) {
   const remitted  = delivered.filter(o=>o.riderRemitted).reduce((s,o)=>s+calcRiderOwed(o),0);
   const outstanding = totalOwed - remitted;
   const totalBranchExp = fExpenses.reduce((s,e)=>s+e.amount,0);
-  const todayExpected  = calcBranchExpected(filterByPeriod(orders,"today",""));
+  const todayRiderTotal  = calcBranchExpected(filterByPeriod(orders,"today",""));
+  const todayBranchExp   = filterByPeriod(expenses,"today","").reduce((s,e)=>s+e.amount,0);
+  const todayExpected    = Math.max(0, todayRiderTotal - todayBranchExp);
+  const todayAlreadySent = filterByPeriod(remittances,"today","").reduce((s,r)=>s+r.remittedAmount,0);
+  const todayRemaining   = Math.max(0, todayExpected - todayAlreadySent);
   const pendingOrders  = fOrders.filter(o=>o.status==="Delivered"&&!o.riderRemitted);
   const period = getBonusPeriod();
   const totalBonus = RIDERS[branch].reduce((s,n) => {
@@ -937,9 +970,28 @@ function ManagerView({ branch, onLogout }) {
               {remitSaved && <Tag label="✓ Logged" type="green"/>}
             </div>
             <div style={{ background:"var(--navy)", borderRadius:"var(--r)", padding:"20px", marginBottom:"16px" }}>
-              <p style={{ fontSize:"10px", fontWeight:600, color:"rgba(255,255,255,.5)", textTransform:"uppercase", letterSpacing:".08em", marginBottom:"4px" }}>Today's Expected Remittance</p>
-              <p style={{ fontFamily:"var(--display)", fontSize:"32px", fontWeight:800, color:"#fff", lineHeight:1, marginBottom:"4px" }}>{fmt(todayExpected)}</p>
-              <p style={{ fontSize:"11px", color:"rgba(255,255,255,.4)" }}>Auto-calculated from today's rider collections</p>
+              <p style={{ fontSize:"10px", fontWeight:600, color:"rgba(255,255,255,.5)", textTransform:"uppercase", letterSpacing:".08em", marginBottom:"4px" }}>To Send Boss Today</p>
+              <p style={{ fontFamily:"var(--display)", fontSize:"32px", fontWeight:800, color: todayRemaining===0&&todayAlreadySent>0?"#34d399":"#fff", lineHeight:1, marginBottom:"12px" }}>
+                {todayRemaining===0&&todayAlreadySent>0 ? "✓ All Sent" : fmt(todayRemaining)}
+              </p>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:"8px" }}>
+                {[
+                  ["Riders Collected", fmt(todayRiderTotal), "#fff"],
+                  ["− Branch Expenses", fmt(todayBranchExp), "#fca5a5"],
+                  ["= Net to Remit", fmt(todayExpected), "#93c5fd"],
+                ].map(([label,val,color]) => (
+                  <div key={label} style={{ background:"rgba(255,255,255,.07)", borderRadius:"var(--r-sm)", padding:"8px", textAlign:"center" }}>
+                    <p style={{ fontSize:"9px", fontWeight:600, color:"rgba(255,255,255,.45)", textTransform:"uppercase", letterSpacing:".06em", marginBottom:"4px" }}>{label}</p>
+                    <p style={{ fontFamily:"var(--display)", fontSize:"13px", fontWeight:700, color }}>{val}</p>
+                  </div>
+                ))}
+              </div>
+              {todayAlreadySent > 0 && (
+                <div style={{ marginTop:"10px", padding:"8px 10px", background:"rgba(52,211,153,.15)", border:"1px solid rgba(52,211,153,.3)", borderRadius:"var(--r-sm)", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                  <span style={{ fontSize:"11px", color:"#6ee7b7" }}>Already sent today</span>
+                  <span style={{ fontFamily:"var(--display)", fontSize:"13px", fontWeight:700, color:"#34d399" }}>{fmt(todayAlreadySent)}</span>
+                </div>
+              )}
             </div>
             <Card accent="blue">
               <p style={{ fontSize:"11px", fontWeight:600, color:"var(--blue)", textTransform:"uppercase", letterSpacing:".04em", marginBottom:"14px" }}>Log Transfer to Boss</p>
@@ -950,24 +1002,35 @@ function ManagerView({ branch, onLogout }) {
                 <div style={{ gridColumn:"1/-1" }}><label className="k-label">Note (optional)</label><input className="k-input" placeholder="Any remarks..." value={remitForm.note} onChange={e=>setRemitForm(p=>({...p,note:e.target.value}))}/></div>
               </div>
               {remitForm.remittedAmount && (() => {
-                const diff = Number(remitForm.remittedAmount||0) - todayExpected;
-                const ok   = Math.abs(diff) < 1;
+                const sending  = Number(remitForm.remittedAmount||0);
+                const diff     = sending - todayRemaining;
+                const ok       = Math.abs(diff) < 1;
+                const afterSend = Math.max(0, todayRemaining - sending);
                 return (
                   <div style={{ background:"#fff", border:"1px solid var(--border)", borderRadius:"var(--r-sm)", padding:"12px", marginBottom:"16px" }}>
-                    {[["Expected",fmt(todayExpected)],["Sending",fmt(remitForm.remittedAmount||0)]].map(([label,val])=>(
+                    {[
+                      ["Still to send", fmt(todayRemaining)],
+                      ["You're sending", fmt(sending)],
+                    ].map(([label,val])=>(
                       <div key={label} style={{ display:"flex", justifyContent:"space-between", marginBottom:"4px" }}>
                         <span style={{ fontSize:"12px", color:"var(--text-faint)" }}>{label}</span>
                         <span style={{ fontSize:"12px", color:"var(--text)", fontWeight:500 }}>{val}</span>
                       </div>
                     ))}
                     <div style={{ height:"1px", background:"var(--border)", margin:"8px 0"}}/>
-                    <div style={{ display:"flex", justifyContent:"space-between" }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", marginBottom: afterSend>0?"6px":"0" }}>
                       <span style={{ fontSize:"12px", color:"var(--text-faint)" }}>Difference</span>
                       <span style={{ fontFamily:"var(--display)", fontSize:"13px", fontWeight:700,
                         color:ok?"var(--green)":diff<0?"var(--red)":"var(--amber)" }}>
                         {ok?"✓ Exact":diff<0?`Short ${fmt(Math.abs(diff))}`:`Over ${fmt(diff)}`}
                       </span>
                     </div>
+                    {afterSend > 0 && (
+                      <div style={{ background:"#fffbeb", border:"1px solid #fde68a", borderRadius:"var(--r-sm)", padding:"6px 10px", display:"flex", justifyContent:"space-between" }}>
+                        <span style={{ fontSize:"11px", color:"var(--amber)" }}>Remaining after this</span>
+                        <span style={{ fontFamily:"var(--display)", fontSize:"12px", fontWeight:700, color:"var(--amber)" }}>{fmt(afterSend)}</span>
+                      </div>
+                    )}
                   </div>
                 );
               })()}
