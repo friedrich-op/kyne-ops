@@ -843,8 +843,7 @@ function ManagerView({ branch, onLogout }) {
   }
   function saveRemittance() {
     if (!remitForm.remittedAmount||!remitForm.txID) return;
-    const expected = calcBranchExpected(filterByPeriod(orders,"today",""));
-    const r = {...remitForm,id:Date.now(),branch,expectedAmount:expected,remittedAmount:Number(remitForm.remittedAmount)};
+    const r = {...remitForm,id:Date.now(),branch,expectedAmount:todayRemaining,remittedAmount:Number(remitForm.remittedAmount)};
     setRemittances(p=>[r,...p]); setRemitForm(blankRemit);
     setRemitSaved(true); setTimeout(()=>setRemitSaved(false),3000);
     sheetAdd("Remittances",r).catch(()=>{});
