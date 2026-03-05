@@ -15,14 +15,13 @@ const RIDERS = {
   KETU: ["Semilore", "Miracle", "Yusuf", "Dickson", "Tony", "Habeb", "Lawal", "Ayomide"],
 };
 
-// ─── TODAY using local Nigeria time (WAT = UTC+1) ─────────────────────────────
+// ─── TODAY — simple local date string, no Date parsing ───────────────────────
 const TODAY = (() => {
-  // Force WAT (UTC+1) — add 60 mins to UTC to get Nigeria local date
   const d = new Date();
-  const wat = new Date(d.getTime() + (60 * 60 * 1000)); // UTC+1
-  const y   = wat.getUTCFullYear();
-  const m   = String(wat.getUTCMonth() + 1).padStart(2, "0");
-  const day = String(wat.getUTCDate()).padStart(2, "0");
+  // Use local getFullYear/Month/Date — avoids any UTC conversion
+  const y   = d.getFullYear();
+  const m   = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
 })();
 
@@ -70,7 +69,7 @@ function calcRiderOwed(order) {
 }
 
 // ─── GOOGLE SHEETS ────────────────────────────────────────────────────────────
-const API_URL = "https://script.google.com/macros/s/AKfycbxImtEJesdzwnkES5wg7n76cI_n9k72ZTL5hr6rYbHWwavvixelAiB6bCpycorz8GF0/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbyGi-mU1xBrPHaT7-OFiR4mzfvaA5ViqZbZHaNyruNKSxKc1c3JtsgWz3M5uxSpE-jJ/exec";
 
 async function sheetGet(tab) {
   try {
@@ -78,8 +77,27 @@ async function sheetGet(tab) {
     const data = await res.json();
     return data.map(row => ({
       ...row,
-      // Strip timestamps — sheets returns "2026-03-05T23:00:00.000Z" sometimes
-      date:           row.date ? String(row.date).split("T")[0] : "",
+      // Strip timestamps and correct date shifting
+      // Sheets sometimes returns "2026-03-04T23:00:00.000Z" for a date saved as "2026-03-05"
+      // We take only the date part and never parse it through Date() to avoid UTC shifting
+      date: (() => {
+        if (!row.date) return "";
+        const s = String(row.date);
+        // If it has a T, take only the date part before T
+        if (s.includes("T")) return s.split("T")[0];
+        // If it looks like a serial number (Google Sheets date serial), convert it
+        if (/^\d+(\.\d+)?$/.test(s)) {
+          // Google Sheets serial: days since Dec 30, 1899
+          const serial = parseFloat(s);
+          const ms = (serial - 25569) * 86400 * 1000;
+          const d  = new Date(ms);
+          const y  = d.getUTCFullYear();
+          const m  = String(d.getUTCMonth() + 1).padStart(2, "0");
+          const day = String(d.getUTCDate()).padStart(2, "0");
+          return `${y}-${m}-${day}`;
+        }
+        return s.slice(0, 10);
+      })(),
       cashValue:      Number(row.cashValue)      || 0,
       posValue:       Number(row.posValue)        || 0,
       roadExpense:    Number(row.roadExpense)      || 0,
