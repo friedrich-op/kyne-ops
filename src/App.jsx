@@ -113,7 +113,15 @@ async function sheetGet(tab) {
       expectedAmount: Number(row.expectedAmount)  || 0,
       remittedAmount: Number(row.remittedAmount)  || 0,
       price:          Number(row.price)          || 0,
+      totalPrice:     Number(row.totalPrice)      || 0,
       riderRemitted:  row.riderRemitted === "true" || row.riderRemitted === true,
+      products: (() => {
+        if (!row.products) return [];
+        if (typeof row.products === "string" && row.products.startsWith("[")) {
+          try { return JSON.parse(row.products); } catch { return []; }
+        }
+        return [];
+      })(),
     }));
   } catch { return []; }
 }
