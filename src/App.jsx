@@ -77,7 +77,7 @@ function calcOutstanding(order) {
 }
 
 // ─── GOOGLE SHEETS ────────────────────────────────────────────────────────────
-const API_URL = "https://script.google.com/macros/s/AKfycbyYszhUGZkQI-P194fU_qa905GQyeBDDcf1Sxyyoa3A3tKVzyz2Ag5r4xWOhfNhbKXA/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbx0n97CWtI-uRQ_k58uuN2c8TBCd8xl37z-sxtcDz2agi0IzfI2-r7k9dpg6NP7KDYL/exec";
 
 async function sheetGet(tab) {
   try {
@@ -126,10 +126,22 @@ async function sheetGet(tab) {
   } catch { return []; }
 }
 async function sheetAdd(tab, data) {
-  try { await fetch(API_URL, { method: "POST", body: JSON.stringify({ action: "add", tab, data }) }); } catch {}
+  try {
+    await fetch(API_URL, {
+      method: "POST",
+      mode: "no-cors",
+      body: JSON.stringify({ action: "add", tab, data })
+    });
+  } catch {}
 }
 async function sheetUpdate(tab, data) {
-  try { await fetch(API_URL, { method: "POST", body: JSON.stringify({ action: "update", tab, data }) }); } catch {}
+  try {
+    await fetch(API_URL, {
+      method: "POST",
+      mode: "no-cors",
+      body: JSON.stringify({ action: "update", tab, data })
+    });
+  } catch {}
 }
 
 // ─── DATE FILTER ──────────────────────────────────────────────────────────────
