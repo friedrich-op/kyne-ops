@@ -1172,8 +1172,16 @@ function ManagerView({ branch, onLogout }) {
   }
 
   function clearRider(rider, date) {
-    const key = `${rider}-${date}`;
-    const rec = { ...riderPayments[key], outstanding: 0, cleared: true };
+    const key      = `${rider}-${date}`;
+    const existing = riderPayments[key];
+    if (!existing) return;
+    // Add the outstanding amount to cash so it reflects in Send to Boss totals
+    const rec = {
+      ...existing,
+      cash: (existing.cash || 0) + (existing.outstanding || 0),
+      outstanding: 0,
+      cleared: true
+    };
     setRiderPayments(p => ({ ...p, [key]: rec }));
     sheetUpdate("RiderPayments", rec).catch(() => {});
   }
@@ -1188,18 +1196,18 @@ function ManagerView({ branch, onLogout }) {
   const fOrders   = filterByPeriod(orders,     mode, customDate);
   const fExpenses = filterByPeriod(expenses,    mode, customDate);
 
-  // Today's expected = sum of all rider net (totalExpected - roadExp) for today
-  const todayRiderTotal  = filterByPeriod(orders, "today", "").reduce((s, o) => s + orderTotal(o), 0);
-  const todayRoadExp     = roadExpenses.filter(r => r.date === TODAY).reduce((s, r) => s + (r.amount || 0), 0);
-  const todayBranchExp   = filterByPeriod(expenses, "today", "").reduce((s, e) => s + e.amount, 0);
-  // POS collected today (auto to boss)
-  const todayPOS = Object.values(riderPayments).filter(r => r.date === TODAY).reduce((s, r) => s + (r.pos || 0), 0);
-  // Cash collected today
-  const todayCash = Object.values(riderPayments).filter(r => r.date === TODAY).reduce((s, r) => s + (r.cash || 0), 0);
+  // Send to Boss calculations — driven by mode/customDate filter
+  const filteredRiderPayments = Object.values(riderPayments).filter(r => filterByPeriod([{date:r.date}], mode, customDate).length > 0);
+  const todayRiderTotal  = fOrders.reduce((s, o) => s + orderTotal(o), 0);
+  const todayBranchExp   = fExpenses.reduce((s, e) => s + e.amount, 0);
+  // POS collected in period (auto to boss)
+  const todayPOS  = filteredRiderPayments.reduce((s, r) => s + (r.pos || 0), 0);
+  // Cash collected in period (including cleared outstanding)
+  const todayCash = filteredRiderPayments.reduce((s, r) => s + (r.cash || 0), 0);
   // Cash to remit to boss = cash collected - branch expenses
-  const todayCashToRemit  = Math.max(0, todayCash - todayBranchExp);
-  const todayAlreadySent  = filterByPeriod(remittances, "today", "").reduce((s, r) => s + r.remittedAmount, 0);
-  const todayRemaining    = Math.max(0, todayCashToRemit - todayAlreadySent);
+  const todayCashToRemit = Math.max(0, todayCash - todayBranchExp);
+  const todayAlreadySent = filterByPeriod(remittances, mode, customDate).reduce((s, r) => s + r.remittedAmount, 0);
+  const todayRemaining   = Math.max(0, todayCashToRemit - todayAlreadySent);
 
   // Get unique rider-date combos from delivered orders in filtered period
   const riderDates = [...new Set(fOrders.map(o => `${o.rider}||${o.date}`))].map(k => {
