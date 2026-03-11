@@ -77,7 +77,7 @@ function calcOutstanding(order) {
 }
 
 // ─── GOOGLE SHEETS ────────────────────────────────────────────────────────────
-const API_URL = "https://script.google.com/macros/s/AKfycbyGi-mU1xBrPHaT7-OFiR4mzfvaA5ViqZbZHaNyruNKSxKc1c3JtsgWz3M5uxSpE-jJ/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbyYszhUGZkQI-P194fU_qa905GQyeBDDcf1Sxyyoa3A3tKVzyz2Ag5r4xWOhfNhbKXA/exec";
 
 async function sheetGet(tab) {
   try {
