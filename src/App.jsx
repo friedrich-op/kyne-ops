@@ -1227,6 +1227,7 @@ function ManagerView({ branch, onLogout }) {
     { id: "remittance", label: "Rider Remittance" },
     { id: "send",       label: "Send to Boss" },
     { id: "riders",     label: "Riders" },
+    { id: "products",   label: "Products" },
     { id: "expenses",   label: "Expenses" },
   ];
 
@@ -1484,6 +1485,57 @@ function ManagerView({ branch, onLogout }) {
           </div>
         )}
 
+        {/* ── PRODUCTS TAB ── */}
+        {tab === "products" && (
+          <div className="fade-in">
+            <SectionTitle title="Product Tracker" sub="Count of delivered products by name" />
+            <PeriodFilter mode={mode} setMode={setMode} customDate={customDate} setCustomDate={setCustomDate} />
+            {(() => {
+              // Build product summary from delivered orders in period
+              const productMap = {};
+              fOrders.forEach(o => {
+                const prods = typeof o.products === "string"
+                  ? (() => { try { return JSON.parse(o.products); } catch { return []; } })()
+                  : (o.products || []);
+                prods.forEach(p => {
+                  const name = (p.name || "").trim();
+                  if (!name) return;
+                  if (!productMap[name]) productMap[name] = { qty: 0, value: 0, orders: 0 };
+                  productMap[name].qty    += Number(p.qty) || 1;
+                  productMap[name].value  += (Number(p.price) || 0) * (Number(p.qty) || 1);
+                  productMap[name].orders += 1;
+                });
+              });
+              const products = Object.entries(productMap).sort((a,b) => b[1].qty - a[1].qty);
+              if (products.length === 0) return (
+                <p style={{ textAlign:"center", padding:"48px 0", fontSize:"13px", color:"var(--text-faint)" }}>No delivered products in this period</p>
+              );
+              return (
+                <div style={{ display:"flex", flexDirection:"column", gap:"8px" }}>
+                  {products.map(([name, stats]) => (
+                    <div key={name} style={{ background:"#fff", border:"1.5px solid var(--border)", borderRadius:"var(--r)", padding:"14px 16px", display:"flex", alignItems:"center", justifyContent:"space-between", boxShadow:"var(--shadow)" }}>
+                      <div>
+                        <p style={{ fontFamily:"var(--display)", fontSize:"14px", fontWeight:700 }}>{name}</p>
+                        <p style={{ fontSize:"11px", color:"var(--text-faint)", marginTop:"2px" }}>{stats.orders} order{stats.orders!==1?"s":""}</p>
+                      </div>
+                      <div style={{ display:"flex", gap:"12px", alignItems:"center" }}>
+                        <div style={{ textAlign:"center" }}>
+                          <p style={{ fontSize:"9px", fontWeight:600, color:"var(--text-faint)", textTransform:"uppercase", letterSpacing:".06em", marginBottom:"2px" }}>Units</p>
+                          <p style={{ fontFamily:"var(--display)", fontSize:"18px", fontWeight:800, color:"var(--blue)" }}>{stats.qty}</p>
+                        </div>
+                        <div style={{ textAlign:"center" }}>
+                          <p style={{ fontSize:"9px", fontWeight:600, color:"var(--text-faint)", textTransform:"uppercase", letterSpacing:".06em", marginBottom:"2px" }}>Value</p>
+                          <p style={{ fontFamily:"var(--display)", fontSize:"14px", fontWeight:700, color:"var(--text)" }}>{fmt(stats.value)}</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+          </div>
+        )}
+
         {/* ── EXPENSES TAB ── */}
         {tab === "expenses" && (
           <div className="fade-in">
@@ -1573,27 +1625,36 @@ function BossView({ onLogout }) {
     const branchExp = fExpenses.filter(e=>e.branch===b).reduce((s,e)=>s+e.amount,0);
     const remitRecs = fRemit.filter(r=>r.branch===b);
     const totalSent = remitRecs.reduce((s,r)=>s+r.remittedAmount,0);
+    // Cash and POS from RiderPayments for this branch in this period
+    const bRiderPays = riderPayments.filter(rp=>rp.branch===b && filterByPeriod([{date:rp.date}],mode,customDate).length>0);
+    const cashCollected = bRiderPays.reduce((s,rp)=>s+(Number(rp.cash)||0),0);
+    const posCollected  = bRiderPays.reduce((s,rp)=>s+(Number(rp.pos)||0),0);
+    // Net cash expected to remit = cash collected - branch expenses
+    const expected     = Math.max(0, cashCollected - branchExp);
+    // Remaining = expected - already sent
+    const cashRemaining = Math.max(0, expected - totalSent);
+    const diff          = totalSent - expected;
     // Outstanding riders — from RiderPayments
-    const branchPayments = riderPayments.filter(rp=>rp.branch===b && !rp.cleared && (rp.outstanding||0)>0);
+    const branchPayments   = riderPayments.filter(rp=>rp.branch===b && !rp.cleared && (rp.outstanding||0)>0);
     const totalOutstanding = branchPayments.reduce((s,rp)=>s+(Number(rp.outstanding)||0),0);
     const bonus = RIDERS[b].reduce((s,n)=>{
       const c = orders.filter(o=>o.rider===n&&isInBonusPeriod(o.date)&&o.status==="Delivered").length;
       return s+calcBonus(c,n);
     },0);
-    // expected = totalVal - branchExp (net cash to remit)
-    const expected = Math.max(0, totalVal - branchExp);
-    const diff     = totalSent - expected;
-    return {branch:b,total:bo.length,delivered:done.length,totalVal,branchExp,expected,totalSent,diff,remitRecs,bonus,branchPayments,totalOutstanding};
+    return {branch:b,total:bo.length,delivered:done.length,totalVal,branchExp,expected,cashCollected,posCollected,cashRemaining,totalSent,diff,remitRecs,bonus,branchPayments,totalOutstanding};
   });
 
   const grand = {
-    totalVal:  branchStats.reduce((s,b)=>s+b.totalVal,0),
-    expected:  branchStats.reduce((s,b)=>s+b.expected,0),
-    sent:      branchStats.reduce((s,b)=>s+b.totalSent,0),
-    exp:       branchStats.reduce((s,b)=>s+b.branchExp,0),
-    orders:    branchStats.reduce((s,b)=>s+b.total,0),
-    bonus:     branchStats.reduce((s,b)=>s+b.bonus,0),
-    outstanding: branchStats.reduce((s,b)=>s+b.totalOutstanding,0),
+    totalVal:      branchStats.reduce((s,b)=>s+b.totalVal,0),
+    cashCollected: branchStats.reduce((s,b)=>s+b.cashCollected,0),
+    posCollected:  branchStats.reduce((s,b)=>s+b.posCollected,0),
+    expected:      branchStats.reduce((s,b)=>s+b.expected,0),
+    sent:          branchStats.reduce((s,b)=>s+b.totalSent,0),
+    remaining:     branchStats.reduce((s,b)=>s+b.cashRemaining,0),
+    exp:           branchStats.reduce((s,b)=>s+b.branchExp,0),
+    orders:        branchStats.reduce((s,b)=>s+b.total,0),
+    bonus:         branchStats.reduce((s,b)=>s+b.bonus,0),
+    outstanding:   branchStats.reduce((s,b)=>s+b.totalOutstanding,0),
   };
 
 
@@ -1636,13 +1697,18 @@ function BossView({ onLogout }) {
               </div>
             )}
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:"10px", marginBottom:"10px" }}>
-              <StatCard label="Total Order Value" value={fmt(grand.totalVal)}   accent="blue"/>
-              <StatCard label="Net Expected"      value={fmt(grand.expected)}/>
-              <StatCard label="Received"          value={fmt(grand.sent)} accent={grandDiff>=0?"green":"red"}/>
+              <StatCard label="Total Order Value" value={fmt(grand.totalVal)}      accent="blue"/>
+              <StatCard label="Cash Collected"    value={fmt(grand.cashCollected)}  accent="blue"/>
+              <StatCard label="POS Collected"     value={fmt(grand.posCollected)}   accent="green"/>
+              <StatCard label="Branch Expenses"   value={fmt(grand.exp)}            accent="red"/>
+            </div>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:"10px", marginBottom:"16px" }}>
+              <StatCard label="Net Cash Expected" value={fmt(grand.expected)}/>
+              <StatCard label="Cash Received"     value={fmt(grand.sent)}       accent={grandDiff>=0?"green":"red"}/>
+              <StatCard label="Still to Send"     value={fmt(grand.remaining)}  accent={grand.remaining>0?"amber":"green"}/>
               <StatCard label="Outstanding"       value={fmt(grand.outstanding)} accent="red"/>
             </div>
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:"10px", marginBottom:"16px" }}>
-              <StatCard label="Branch Expenses" value={fmt(grand.exp)}   accent="red"/>
               <StatCard label="Total Bonus Due" value={fmt(grand.bonus)} accent="blue" sub={period.label}/>
               <StatCard label="Total Orders"    value={grand.orders}/>
             </div>
@@ -1655,11 +1721,13 @@ function BossView({ onLogout }) {
                       fontFamily:"var(--display)", fontSize:"12px", fontWeight:800, color:"var(--blue)" }}>{b.branch[0]}</div>
                     <span style={{ fontFamily:"var(--display)", fontSize:"13px", fontWeight:700 }}>{b.branch}</span>
                   </div>
-                  <p style={{ fontFamily:"var(--display)", fontSize:"18px", fontWeight:800, color:"var(--blue)", marginBottom:"4px" }}>{fmt(b.totalVal)}</p>
-                  <p style={{ fontSize:"11px", color:"var(--text-faint)", marginBottom:"8px" }}>{b.delivered}/{b.total} delivered</p>
-                  {b.totalOutstanding > 0 && <Tag label={`Owes ${fmt(b.totalOutstanding)}`} type="red"/>}
-                  <div style={{ marginTop:"6px" }}>
-                    {Math.abs(b.diff)<1&&b.totalSent>0 ? <Tag label="✓ Balanced" type="green"/> : b.diff<0 ? <Tag label={`Short ${fmt(Math.abs(b.diff))}`} type="red"/> : b.diff>0 ? <Tag label={`Over ${fmt(b.diff)}`} type="amber"/> : null}
+                  <p style={{ fontFamily:"var(--display)", fontSize:"18px", fontWeight:800, color:"var(--blue)", marginBottom:"2px" }}>{fmt(b.totalVal)}</p>
+                  <p style={{ fontSize:"11px", color:"var(--text-faint)", marginBottom:"6px" }}>{b.delivered}/{b.total} delivered</p>
+                  <div style={{ display:"flex", gap:"6px", flexWrap:"wrap", marginBottom:"6px" }}>
+                    {b.cashRemaining > 0
+                      ? <Tag label={`Still owes ${fmt(b.cashRemaining)}`} type="red"/>
+                      : b.totalSent > 0 ? <Tag label="✓ Sent" type="green"/> : null}
+                    {b.totalOutstanding > 0 && <Tag label={`Rider owes ${fmt(b.totalOutstanding)}`} type="amber"/>}
                   </div>
                   {b.branchPayments.length > 0 && (
                     <div style={{ marginTop:"10px", paddingTop:"8px", borderTop:"1px solid var(--border)" }}>
