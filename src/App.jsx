@@ -48,13 +48,20 @@ function isInBonusPeriod(dateStr) {
   return dateStr >= start && dateStr <= end;
 }
 
-function calcBonus(n) {
+// Custom flat-rate bonus riders (no tiers)
+const CUSTOM_BONUS = {
+  "Mr Tobi": 2000,
+  "Philip":  800,
+};
+function calcBonus(n, riderName) {
+  if (riderName && CUSTOM_BONUS[riderName] !== undefined) return n * CUSTOM_BONUS[riderName];
   if (n <= 200) return n * 200;
   if (n <= 250) return n * 400;
   if (n <= 300) return n * 500;
   return n * 700;
 }
-function getBonusRate(n) {
+function getBonusRate(n, riderName) {
+  if (riderName && CUSTOM_BONUS[riderName] !== undefined) return CUSTOM_BONUS[riderName];
   if (n <= 200) return 200;
   if (n <= 250) return 400;
   if (n <= 300) return 500;
@@ -1026,7 +1033,7 @@ function RiderManagerView({ branch, onLogout }) {
                         <RiderAvatar name={name} size={34} />
                         <span style={{ fontFamily: "var(--display)", fontSize: "13px", fontWeight: 700 }}>{name}</span>
                       </div>
-                      <Tag label={`Bonus ${fmt(calcBonus(bonusCount))}`} type="blue" />
+                      <Tag label={`Bonus ${fmt(calcBonus(bonusCount, name))}`} type="blue" />
                     </div>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px" }}>
                       {[
@@ -1412,8 +1419,12 @@ function ManagerView({ branch, onLogout }) {
 
             {remittances.length > 0 && (
               <div style={{ marginTop: "24px" }}>
-                <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-faint)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: "10px" }}>Past Remittances</p>
-                {remittances.map(r => <RemitCard key={r.id} rec={r} />)}
+                <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-faint)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: "8px" }}>Past Remittances</p>
+                <PeriodFilter mode={mode} setMode={setMode} customDate={customDate} setCustomDate={setCustomDate}/>
+                {filterByPeriod(remittances, mode, customDate).length === 0
+                  ? <p style={{ textAlign:"center", padding:"24px 0", fontSize:"13px", color:"var(--text-faint)" }}>No remittances in this period</p>
+                  : filterByPeriod(remittances, mode, customDate).map(r => <RemitCard key={r.id} rec={r} />)
+                }
               </div>
             )}
           </div>
@@ -1525,10 +1536,11 @@ function BossView({ onLogout }) {
   const [remittances, setRemittances] = useState([]);
   const [syncing, setSyncing]       = useState(true);
 
+  const [riderPayments, setRiderPayments] = useState([]);
   useEffect(() => {
     setSyncing(true);
-    Promise.all([sheetGet("Orders"),sheetGet("Expenses"),sheetGet("Remittances")])
-      .then(([o,e,r]) => { setOrders(o); setExpenses(e); setRemittances(r); })
+    Promise.all([sheetGet("Orders"),sheetGet("Expenses"),sheetGet("Remittances"),sheetGet("RiderPayments"),sheetGet("RoadExpenses")])
+      .then(([o,e,r,rp,re]) => { setOrders(o); setExpenses(e); setRemittances(r); setRiderPayments(rp); })
       .catch(()=>{}).finally(()=>setSyncing(false));
   }, []);
 
@@ -1537,32 +1549,46 @@ function BossView({ onLogout }) {
   const fRemit    = filterByPeriod(remittances, mode, customDate);
   const period    = getBonusPeriod();
 
+  function getOrderTotal(order) {
+    if (order.totalPrice) return Number(order.totalPrice) || 0;
+    if (order.products) {
+      const prods = typeof order.products === "string" ? (() => { try { return JSON.parse(order.products); } catch { return []; } })() : order.products;
+      return prods.reduce((s,p) => s + (Number(p.price)||0)*(Number(p.qty)||1), 0);
+    }
+    return 0;
+  }
+
   const branchStats = BRANCHES.map(b => {
-    const bo   = fOrders.filter(o=>o.branch===b);
-    const done = bo.filter(o=>o.status==="Delivered");
-    const cash = done.reduce((s,o)=>s+(o.cashValue||0),0);
-    const pos  = done.reduce((s,o)=>s+(o.posValue||0),0);
-    const expected  = done.reduce((s,o)=>s+calcRiderOwed(o),0);
+    const bo        = fOrders.filter(o=>o.branch===b);
+    const done      = bo.filter(o=>o.status==="Delivered");
+    const totalVal  = done.reduce((s,o)=>s+getOrderTotal(o),0);
     const branchExp = fExpenses.filter(e=>e.branch===b).reduce((s,e)=>s+e.amount,0);
     const remitRecs = fRemit.filter(r=>r.branch===b);
     const totalSent = remitRecs.reduce((s,r)=>s+r.remittedAmount,0);
-    const diff      = totalSent - expected;
+    // Outstanding riders — from RiderPayments
+    const branchPayments = riderPayments.filter(rp=>rp.branch===b && !rp.cleared && (rp.outstanding||0)>0);
+    const totalOutstanding = branchPayments.reduce((s,rp)=>s+(Number(rp.outstanding)||0),0);
     const bonus = RIDERS[b].reduce((s,n)=>{
       const c = orders.filter(o=>o.rider===n&&isInBonusPeriod(o.date)&&o.status==="Delivered").length;
-      return s+calcBonus(c);
+      return s+calcBonus(c,n);
     },0);
-    return {branch:b,total:bo.length,delivered:done.length,cash,pos,expected,branchExp,totalSent,diff,remitRecs,bonus};
+    // expected = totalVal - branchExp (net cash to remit)
+    const expected = Math.max(0, totalVal - branchExp);
+    const diff     = totalSent - expected;
+    return {branch:b,total:bo.length,delivered:done.length,totalVal,branchExp,expected,totalSent,diff,remitRecs,bonus,branchPayments,totalOutstanding};
   });
 
   const grand = {
-    cash:     branchStats.reduce((s,b)=>s+b.cash,0),
-    pos:      branchStats.reduce((s,b)=>s+b.pos,0),
-    expected: branchStats.reduce((s,b)=>s+b.expected,0),
-    sent:     branchStats.reduce((s,b)=>s+b.totalSent,0),
-    exp:      branchStats.reduce((s,b)=>s+b.branchExp,0),
-    orders:   branchStats.reduce((s,b)=>s+b.total,0),
-    bonus:    branchStats.reduce((s,b)=>s+b.bonus,0),
+    totalVal:  branchStats.reduce((s,b)=>s+b.totalVal,0),
+    expected:  branchStats.reduce((s,b)=>s+b.expected,0),
+    sent:      branchStats.reduce((s,b)=>s+b.totalSent,0),
+    exp:       branchStats.reduce((s,b)=>s+b.branchExp,0),
+    orders:    branchStats.reduce((s,b)=>s+b.total,0),
+    bonus:     branchStats.reduce((s,b)=>s+b.bonus,0),
+    outstanding: branchStats.reduce((s,b)=>s+b.totalOutstanding,0),
   };
+
+
   const grandDiff = grand.sent - grand.expected;
 
   const TABS = [{id:"overview",label:"Overview"},{id:"remittances",label:"Remittances"},{id:"branches",label:"Branches"},{id:"riders",label:"All Riders"},{id:"orders",label:"Orders"}];
@@ -1577,23 +1603,23 @@ function BossView({ onLogout }) {
           <div className="fade-in">
             <SectionTitle title="All Branches Overview"/>
             <PeriodFilter mode={mode} setMode={setMode} customDate={customDate} setCustomDate={setCustomDate}/>
-            {Math.abs(grandDiff) > 0 && (
-              <div className={grandDiff<0?"pulse-anim":""} style={{
-                background:grandDiff<0?"#fef2f2":"#fffbeb",
-                border:`1.5px solid ${grandDiff<0?"#fecaca":"#fde68a"}`,
-                borderRadius:"var(--r)", padding:"14px 16px", marginBottom:"16px",
+            {branchStats.filter(b=>Math.abs(b.diff)>0).map(b=>(
+              <div key={b.branch} className={b.diff<0?"pulse-anim":""} style={{
+                background:b.diff<0?"#fef2f2":"#fffbeb",
+                border:`1.5px solid ${b.diff<0?"#fecaca":"#fde68a"}`,
+                borderRadius:"var(--r)", padding:"12px 16px", marginBottom:"8px",
                 display:"flex", alignItems:"center", gap:"12px" }}>
-                <span style={{ fontSize:"22px" }}>{grandDiff<0?"🚨":"⚠️"}</span>
+                <span style={{ fontSize:"18px" }}>{b.diff<0?"🚨":"⚠️"}</span>
                 <div>
-                  <p style={{ fontSize:"13px", fontWeight:600, color:grandDiff<0?"var(--red)":"var(--amber)" }}>
-                    {grandDiff<0?`Branches short by ${fmt(Math.abs(grandDiff))}`:`Branches sent ${fmt(grandDiff)} more than expected`}
+                  <p style={{ fontSize:"13px", fontWeight:600, color:b.diff<0?"var(--red)":"var(--amber)" }}>
+                    {b.branch}: {b.diff<0?`Short ${fmt(Math.abs(b.diff))}`:`Over by ${fmt(b.diff)}`}
                   </p>
-                  <p style={{ fontSize:"11px", color:grandDiff<0?"#f87171":"#fbbf24", marginTop:"2px" }}>
-                    Expected: {fmt(grand.expected)} · Received: {fmt(grand.sent)}
+                  <p style={{ fontSize:"11px", color:b.diff<0?"#f87171":"#fbbf24", marginTop:"2px" }}>
+                    Expected: {fmt(b.expected)} · Received: {fmt(b.totalSent)}
                   </p>
                 </div>
               </div>
-            )}
+            ))}
             {Math.abs(grandDiff)<1 && grand.sent>0 && (
               <div style={{ background:"#ecfdf5", border:"1.5px solid #a7f3d0", borderRadius:"var(--r)",
                 padding:"12px 16px", marginBottom:"16px", display:"flex", alignItems:"center", gap:"10px" }}>
@@ -1602,10 +1628,10 @@ function BossView({ onLogout }) {
               </div>
             )}
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:"10px", marginBottom:"10px" }}>
-              <StatCard label="Total Cash"      value={fmt(grand.cash)}     accent="blue"/>
-              <StatCard label="Total POS"       value={fmt(grand.pos)}      accent="green"/>
-              <StatCard label="Expected"        value={fmt(grand.expected)}/>
-              <StatCard label="Received"        value={fmt(grand.sent)} accent={grandDiff>=0?"green":"red"}/>
+              <StatCard label="Total Order Value" value={fmt(grand.totalVal)}   accent="blue"/>
+              <StatCard label="Net Expected"      value={fmt(grand.expected)}/>
+              <StatCard label="Received"          value={fmt(grand.sent)} accent={grandDiff>=0?"green":"red"}/>
+              <StatCard label="Outstanding"       value={fmt(grand.outstanding)} accent="red"/>
             </div>
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:"10px", marginBottom:"16px" }}>
               <StatCard label="Branch Expenses" value={fmt(grand.exp)}   accent="red"/>
@@ -1621,9 +1647,23 @@ function BossView({ onLogout }) {
                       fontFamily:"var(--display)", fontSize:"12px", fontWeight:800, color:"var(--blue)" }}>{b.branch[0]}</div>
                     <span style={{ fontFamily:"var(--display)", fontSize:"13px", fontWeight:700 }}>{b.branch}</span>
                   </div>
-                  <p style={{ fontFamily:"var(--display)", fontSize:"18px", fontWeight:800, color:"var(--blue)", marginBottom:"4px" }}>{fmt(b.cash+b.pos)}</p>
+                  <p style={{ fontFamily:"var(--display)", fontSize:"18px", fontWeight:800, color:"var(--blue)", marginBottom:"4px" }}>{fmt(b.totalVal)}</p>
                   <p style={{ fontSize:"11px", color:"var(--text-faint)", marginBottom:"8px" }}>{b.delivered}/{b.total} delivered</p>
-                  {Math.abs(b.diff)<1&&b.totalSent>0 ? <Tag label="✓ Balanced" type="green"/> : b.diff<0 ? <Tag label={`Short ${fmt(Math.abs(b.diff))}`} type="red"/> : b.diff>0 ? <Tag label={`Over ${fmt(b.diff)}`} type="amber"/> : null}
+                  {b.totalOutstanding > 0 && <Tag label={`Owes ${fmt(b.totalOutstanding)}`} type="red"/>}
+                  <div style={{ marginTop:"6px" }}>
+                    {Math.abs(b.diff)<1&&b.totalSent>0 ? <Tag label="✓ Balanced" type="green"/> : b.diff<0 ? <Tag label={`Short ${fmt(Math.abs(b.diff))}`} type="red"/> : b.diff>0 ? <Tag label={`Over ${fmt(b.diff)}`} type="amber"/> : null}
+                  </div>
+                  {b.branchPayments.length > 0 && (
+                    <div style={{ marginTop:"10px", paddingTop:"8px", borderTop:"1px solid var(--border)" }}>
+                      <p style={{ fontSize:"9px", fontWeight:600, color:"var(--red)", textTransform:"uppercase", letterSpacing:".06em", marginBottom:"6px" }}>Outstanding Riders</p>
+                      {b.branchPayments.map(rp => (
+                        <div key={rp.id||rp.rider} style={{ display:"flex", justifyContent:"space-between", marginBottom:"3px" }}>
+                          <span style={{ fontSize:"11px", color:"var(--text-dim)" }}>{rp.rider}</span>
+                          <span style={{ fontSize:"11px", fontWeight:600, color:"var(--red)" }}>{fmt(rp.outstanding)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </Card>
               ))}
             </div>
