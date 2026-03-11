@@ -505,8 +505,8 @@ function RemitCard({ rec }) {
 }
 
 function BonusRow({ name, count }) {
-  const bonus = calcBonus(count);
-  const rate  = getBonusRate(count);
+  const bonus = calcBonus(count, name);
+  const rate  = getBonusRate(count, name);
   const next  = count<=200?200:count<=250?250:count<=300?300:null;
   return (
     <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
@@ -1470,7 +1470,7 @@ function ManagerView({ branch, onLogout }) {
                       </div>
                       <div style={{ display: "flex", gap: "6px" }}>
                         {outstanding > 0 && <Tag label={`Owes ${fmt(outstanding)}`} type="red" />}
-                        <Tag label={`Bonus ${fmt(calcBonus(bonusCount))}`} type="blue" />
+                        <Tag label={`Bonus ${fmt(calcBonus(bonusCount, name))}`} type="blue" />
                       </div>
                     </div>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px" }}>
@@ -2019,7 +2019,7 @@ function BossView({ onLogout }) {
                     display:"flex", justifyContent:"space-between", alignItems:"center" }}>
                     <span style={{ fontSize:"11px", fontWeight:600, color:"var(--text-dim)", textTransform:"uppercase", letterSpacing:".04em" }}>{b} Total</span>
                     <span style={{ fontFamily:"var(--display)", fontSize:"15px", fontWeight:800, color:"var(--blue)" }}>
-                      {fmt(RIDERS[b].reduce((s,n)=>s+calcBonus(orders.filter(o=>o.rider===n&&isInBonusPeriod(o.date)&&o.status==="Delivered").length),0))}
+                      {fmt(RIDERS[b].reduce((s,n)=>s+calcBonus(orders.filter(o=>o.rider===n&&isInBonusPeriod(o.date)&&o.status==="Delivered").length,n),0))}
                     </span>
                   </div>
                 </Card>
