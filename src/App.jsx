@@ -1095,6 +1095,13 @@ function ManagerView({ branch, onLogout }) {
   const [mode, setMode]             = useState("today");
   const [customDate, setCustomDate] = useState("");
   const [showExpForm, setShowExpForm] = useState(false);
+  const [inventory, setInventory]     = useState([]);
+  const [invSubTab, setInvSubTab]     = useState("stock"); // stock | receive | return
+  const blankReceive = { date: TODAY, vendor: "", product: "", qty: "" };
+  const blankReturn  = { date: TODAY, product: "", qty: "", note: "" };
+  const [receiveForm, setReceiveForm] = useState({ date: TODAY, vendor: "", product: "", qty: "" });
+  const [returnForm, setReturnForm]   = useState({ date: TODAY, product: "", qty: "", note: "" });
+  const [invSaved, setInvSaved]       = useState("");
   const [remitSaved, setRemitSaved] = useState(false);
   const blankExp   = { date: TODAY, description: "", category: "Fuel", amount: "" };
   const blankRemit = { date: TODAY, remittedAmount: "", txID: "", note: "" };
@@ -1105,13 +1112,13 @@ function ManagerView({ branch, onLogout }) {
 
   useEffect(() => {
     setSyncing(true);
-    Promise.all([sheetGet("Orders"), sheetGet("RoadExpenses"), sheetGet("Expenses"), sheetGet("Remittances"), sheetGet("RiderPayments")])
-      .then(([o, re, e, r, rp]) => {
+    Promise.all([sheetGet("Orders"), sheetGet("RoadExpenses"), sheetGet("Expenses"), sheetGet("Remittances"), sheetGet("RiderPayments"), sheetGet("Inventory")])
+      .then(([o, re, e, r, rp, inv]) => {
         setOrders(o.filter(x => x.branch === branch && x.status === "Delivered"));
         setRoadExpenses(re.filter(x => x.branch === branch));
         setExpenses(e.filter(x => x.branch === branch));
         setRemittances(r.filter(x => x.branch === branch));
-        // Build riderPayments map
+        setInventory(inv.filter(x => x.branch === branch));
         const rpMap = {};
         rp.filter(x => x.branch === branch).forEach(x => { rpMap[`${x.rider}-${x.date}`] = x; });
         setRiderPayments(rpMap);
@@ -1488,51 +1495,221 @@ function ManagerView({ branch, onLogout }) {
         {/* ── PRODUCTS TAB ── */}
         {tab === "products" && (
           <div className="fade-in">
-            <SectionTitle title="Product Tracker" sub="Count of delivered products by name" />
-            <PeriodFilter mode={mode} setMode={setMode} customDate={customDate} setCustomDate={setCustomDate} />
-            {(() => {
-              // Build product summary from delivered orders in period
-              const productMap = {};
-              fOrders.forEach(o => {
-                const prods = typeof o.products === "string"
-                  ? (() => { try { return JSON.parse(o.products); } catch { return []; } })()
-                  : (o.products || []);
-                prods.forEach(p => {
-                  const name = (p.name || "").trim();
-                  if (!name) return;
-                  if (!productMap[name]) productMap[name] = { qty: 0, value: 0, orders: 0 };
-                  productMap[name].qty    += Number(p.qty) || 1;
-                  productMap[name].value  += (Number(p.price) || 0) * (Number(p.qty) || 1);
-                  productMap[name].orders += 1;
+            {/* Sub-tab switcher */}
+            <div style={{ display:"flex", gap:"8px", marginBottom:"16px" }}>
+              {[["stock","📦 Stock"],["delivered","🚴 Delivered"],["receive","➕ Receive"],["return","↩ Return"]].map(([id,label])=>(
+                <button key={id} onClick={()=>setInvSubTab(id)} style={{
+                  padding:"7px 14px", borderRadius:"var(--r-sm)", fontSize:"12px", fontWeight:600,
+                  border: invSubTab===id ? "2px solid var(--blue)" : "1.5px solid var(--border)",
+                  background: invSubTab===id ? "var(--blue)" : "#fff",
+                  color: invSubTab===id ? "#fff" : "var(--text-dim)", cursor:"pointer"
+                }}>{label}</button>
+              ))}
+            </div>
+
+            {/* ── STOCK OVERVIEW ── */}
+            {invSubTab === "stock" && (() => {
+              // Build stock map: received - delivered - returned
+              const stockMap = {};
+              // Add received
+              inventory.filter(i=>i.type==="receive").forEach(i=>{
+                const n = (i.product||"").trim();
+                if (!n) return;
+                if (!stockMap[n]) stockMap[n] = { received:0, delivered:0, returned:0, vendor:"" };
+                stockMap[n].received += Number(i.qty)||0;
+                stockMap[n].vendor    = i.vendor || stockMap[n].vendor;
+              });
+              // Subtract delivered (from all orders ever, not filtered)
+              orders.forEach(o=>{
+                const prods = typeof o.products==="string" ? (()=>{try{return JSON.parse(o.products);}catch{return [];}})() : (o.products||[]);
+                prods.forEach(p=>{
+                  const n=(p.name||"").trim();
+                  if (!n||!stockMap[n]) return;
+                  stockMap[n].delivered += Number(p.qty)||1;
                 });
               });
-              const products = Object.entries(productMap).sort((a,b) => b[1].qty - a[1].qty);
-              if (products.length === 0) return (
-                <p style={{ textAlign:"center", padding:"48px 0", fontSize:"13px", color:"var(--text-faint)" }}>No delivered products in this period</p>
-              );
+              // Subtract returned
+              inventory.filter(i=>i.type==="return").forEach(i=>{
+                const n=(i.product||"").trim();
+                if (!n||!stockMap[n]) return;
+                stockMap[n].returned += Number(i.qty)||0;
+              });
+              const items = Object.entries(stockMap).map(([name,s])=>({
+                name, ...s, remaining: s.received - s.delivered - s.returned
+              })).sort((a,b)=>b.remaining-a.remaining);
+              if (items.length===0) return <p style={{textAlign:"center",padding:"48px 0",fontSize:"13px",color:"var(--text-faint)"}}>No inventory records yet. Use ➕ Receive to add stock.</p>;
               return (
-                <div style={{ display:"flex", flexDirection:"column", gap:"8px" }}>
-                  {products.map(([name, stats]) => (
-                    <div key={name} style={{ background:"#fff", border:"1.5px solid var(--border)", borderRadius:"var(--r)", padding:"14px 16px", display:"flex", alignItems:"center", justifyContent:"space-between", boxShadow:"var(--shadow)" }}>
-                      <div>
-                        <p style={{ fontFamily:"var(--display)", fontSize:"14px", fontWeight:700 }}>{name}</p>
-                        <p style={{ fontSize:"11px", color:"var(--text-faint)", marginTop:"2px" }}>{stats.orders} order{stats.orders!==1?"s":""}</p>
+                <div style={{display:"flex",flexDirection:"column",gap:"10px"}}>
+                  {items.map(item=>(
+                    <div key={item.name} style={{
+                      background: item.remaining<=0?"#fef2f2":"#fff",
+                      border:`1.5px solid ${item.remaining<=0?"#fecaca":"var(--border)"}`,
+                      borderRadius:"var(--r)", padding:"14px 16px", boxShadow:"var(--shadow)"
+                    }}>
+                      <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:"10px"}}>
+                        <div>
+                          <p style={{fontFamily:"var(--display)",fontSize:"14px",fontWeight:700}}>{item.name}</p>
+                          {item.vendor&&<p style={{fontSize:"11px",color:"var(--text-faint)",marginTop:"2px"}}>Vendor: {item.vendor}</p>}
+                        </div>
+                        <div style={{textAlign:"center",background:item.remaining<=0?"#fecaca":"var(--blue-pale)",border:`1px solid ${item.remaining<=0?"#fca5a5":"var(--blue-pale2)"}`,borderRadius:"var(--r-sm)",padding:"6px 14px"}}>
+                          <p style={{fontSize:"9px",fontWeight:600,color:item.remaining<=0?"var(--red)":"var(--blue)",textTransform:"uppercase",letterSpacing:".06em",marginBottom:"2px"}}>Remaining</p>
+                          <p style={{fontFamily:"var(--display)",fontSize:"22px",fontWeight:800,color:item.remaining<=0?"var(--red)":"var(--blue)",lineHeight:1}}>{item.remaining}</p>
+                        </div>
                       </div>
-                      <div style={{ display:"flex", gap:"12px", alignItems:"center" }}>
-                        <div style={{ textAlign:"center" }}>
-                          <p style={{ fontSize:"9px", fontWeight:600, color:"var(--text-faint)", textTransform:"uppercase", letterSpacing:".06em", marginBottom:"2px" }}>Units</p>
-                          <p style={{ fontFamily:"var(--display)", fontSize:"18px", fontWeight:800, color:"var(--blue)" }}>{stats.qty}</p>
-                        </div>
-                        <div style={{ textAlign:"center" }}>
-                          <p style={{ fontSize:"9px", fontWeight:600, color:"var(--text-faint)", textTransform:"uppercase", letterSpacing:".06em", marginBottom:"2px" }}>Value</p>
-                          <p style={{ fontFamily:"var(--display)", fontSize:"14px", fontWeight:700, color:"var(--text)" }}>{fmt(stats.value)}</p>
-                        </div>
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"8px"}}>
+                        {[["Received",item.received,"var(--green)"],["Delivered",item.delivered,"var(--blue)"],["Returned",item.returned,"var(--amber)"]].map(([label,val,color])=>(
+                          <div key={label} style={{background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"var(--r-sm)",padding:"8px",textAlign:"center"}}>
+                            <p style={{fontSize:"9px",fontWeight:600,color:"var(--text-faint)",marginBottom:"2px"}}>{label}</p>
+                            <p style={{fontFamily:"var(--display)",fontSize:"14px",fontWeight:700,color}}>{val}</p>
+                          </div>
+                        ))}
                       </div>
                     </div>
                   ))}
                 </div>
               );
             })()}
+
+            {/* ── DELIVERED SUMMARY ── */}
+            {invSubTab === "delivered" && (()=>{
+              const productMap = {};
+              fOrders.forEach(o=>{
+                const prods = typeof o.products==="string"?(()=>{try{return JSON.parse(o.products);}catch{return [];}})():(o.products||[]);
+                prods.forEach(p=>{
+                  const name=(p.name||"").trim();
+                  if (!name) return;
+                  if (!productMap[name]) productMap[name]={qty:0,value:0,orders:0};
+                  productMap[name].qty    += Number(p.qty)||1;
+                  productMap[name].value  += (Number(p.price)||0)*(Number(p.qty)||1);
+                  productMap[name].orders += 1;
+                });
+              });
+              const products = Object.entries(productMap).sort((a,b)=>b[1].qty-a[1].qty);
+              return (
+                <>
+                  <PeriodFilter mode={mode} setMode={setMode} customDate={customDate} setCustomDate={setCustomDate}/>
+                  {products.length===0
+                    ? <p style={{textAlign:"center",padding:"48px 0",fontSize:"13px",color:"var(--text-faint)"}}>No delivered products in this period</p>
+                    : <div style={{display:"flex",flexDirection:"column",gap:"8px"}}>
+                        {products.map(([name,stats])=>(
+                          <div key={name} style={{background:"#fff",border:"1.5px solid var(--border)",borderRadius:"var(--r)",padding:"14px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",boxShadow:"var(--shadow)"}}>
+                            <div>
+                              <p style={{fontFamily:"var(--display)",fontSize:"14px",fontWeight:700}}>{name}</p>
+                              <p style={{fontSize:"11px",color:"var(--text-faint)",marginTop:"2px"}}>{stats.orders} order{stats.orders!==1?"s":""}</p>
+                            </div>
+                            <div style={{display:"flex",gap:"16px",alignItems:"center"}}>
+                              <div style={{textAlign:"center"}}>
+                                <p style={{fontSize:"9px",fontWeight:600,color:"var(--text-faint)",textTransform:"uppercase",letterSpacing:".06em",marginBottom:"2px"}}>Units</p>
+                                <p style={{fontFamily:"var(--display)",fontSize:"20px",fontWeight:800,color:"var(--blue)"}}>{stats.qty}</p>
+                              </div>
+                              <div style={{textAlign:"center"}}>
+                                <p style={{fontSize:"9px",fontWeight:600,color:"var(--text-faint)",textTransform:"uppercase",letterSpacing:".06em",marginBottom:"2px"}}>Value</p>
+                                <p style={{fontFamily:"var(--display)",fontSize:"14px",fontWeight:700,color:"var(--text)"}}>{fmt(stats.value)}</p>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                  }
+                </>
+              );
+            })()}
+
+            {/* ── RECEIVE FROM VENDOR ── */}
+            {invSubTab === "receive" && (
+              <Card accent="blue">
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"14px"}}>
+                  <p style={{fontSize:"11px",fontWeight:600,color:"var(--blue)",textTransform:"uppercase",letterSpacing:".04em"}}>Receive Stock from Vendor</p>
+                  {invSaved==="receive" && <Tag label="✓ Saved" type="green"/>}
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"12px",marginBottom:"14px"}}>
+                  <div><label className="k-label">Date</label><input type="date" className="k-input" value={receiveForm.date} onChange={e=>setReceiveForm(f=>({...f,date:e.target.value}))}/></div>
+                  <div><label className="k-label">Vendor Name</label><input className="k-input" placeholder="e.g. ABC Electronics" value={receiveForm.vendor} onChange={e=>setReceiveForm(f=>({...f,vendor:e.target.value}))}/></div>
+                  <div><label className="k-label">Product Name</label><input className="k-input" placeholder="e.g. Laptop" value={receiveForm.product} onChange={e=>setReceiveForm(f=>({...f,product:e.target.value}))}/></div>
+                  <div><label className="k-label">Quantity</label><input type="number" className="k-input" placeholder="0" min="1" value={receiveForm.qty} onChange={e=>setReceiveForm(f=>({...f,qty:e.target.value}))}/></div>
+                </div>
+                <button disabled={!receiveForm.vendor||!receiveForm.product||!receiveForm.qty}
+                  onClick={()=>{
+                    const rec={id:Date.now(),branch,type:"receive",...receiveForm,qty:Number(receiveForm.qty)||0};
+                    setInventory(p=>[rec,...p]);
+                    setReceiveForm({date:TODAY,vendor:"",product:"",qty:""});
+                    setInvSaved("receive"); setTimeout(()=>setInvSaved(""),3000);
+                    sheetAdd("Inventory",rec).catch(()=>{});
+                  }}
+                  style={{width:"100%",padding:"10px",background:!receiveForm.vendor||!receiveForm.product||!receiveForm.qty?"#f1f5f9":"var(--blue)",border:"none",borderRadius:"var(--r-sm)",color:!receiveForm.vendor||!receiveForm.product||!receiveForm.qty?"#94a3b8":"#fff",fontFamily:"var(--display)",fontSize:"13px",fontWeight:700,cursor:!receiveForm.vendor||!receiveForm.product||!receiveForm.qty?"not-allowed":"pointer"}}>
+                  Save Receipt
+                </button>
+                {/* History */}
+                {inventory.filter(i=>i.type==="receive").length>0 && (
+                  <div style={{marginTop:"16px",paddingTop:"12px",borderTop:"1px solid var(--blue-pale2)"}}>
+                    <p style={{fontSize:"10px",fontWeight:600,color:"var(--text-faint)",textTransform:"uppercase",letterSpacing:".06em",marginBottom:"8px"}}>Recent Receipts</p>
+                    {inventory.filter(i=>i.type==="receive").slice(0,10).map(i=>(
+                      <div key={i.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 0",borderBottom:"1px solid var(--border)"}}>
+                        <div>
+                          <span style={{fontSize:"12px",fontWeight:600,color:"var(--text)"}}>{i.product}</span>
+                          <span style={{fontSize:"11px",color:"var(--text-faint)",marginLeft:"8px"}}>from {i.vendor}</span>
+                        </div>
+                        <div style={{display:"flex",gap:"12px",alignItems:"center"}}>
+                          <span style={{fontFamily:"var(--display)",fontSize:"13px",fontWeight:700,color:"var(--green)"}}>+{i.qty}</span>
+                          <span style={{fontSize:"11px",color:"var(--text-faint)"}}>{i.date}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </Card>
+            )}
+
+            {/* ── RETURN TO VENDOR ── */}
+            {invSubTab === "return" && (
+              <Card accent="blue">
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"14px"}}>
+                  <p style={{fontSize:"11px",fontWeight:600,color:"var(--blue)",textTransform:"uppercase",letterSpacing:".04em"}}>Return Product to Vendor</p>
+                  {invSaved==="return" && <Tag label="✓ Saved" type="green"/>}
+                </div>
+                {/* Product dropdown from known inventory */}
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"12px",marginBottom:"14px"}}>
+                  <div><label className="k-label">Date</label><input type="date" className="k-input" value={returnForm.date} onChange={e=>setReturnForm(f=>({...f,date:e.target.value}))}/></div>
+                  <div>
+                    <label className="k-label">Product</label>
+                    <input className="k-input" placeholder="e.g. Laptop" value={returnForm.product} onChange={e=>setReturnForm(f=>({...f,product:e.target.value}))} list="inv-products"/>
+                    <datalist id="inv-products">
+                      {[...new Set(inventory.filter(i=>i.type==="receive").map(i=>i.product))].map(p=><option key={p} value={p}/>)}
+                    </datalist>
+                  </div>
+                  <div><label className="k-label">Quantity</label><input type="number" className="k-input" placeholder="0" min="1" value={returnForm.qty} onChange={e=>setReturnForm(f=>({...f,qty:e.target.value}))}/></div>
+                  <div><label className="k-label">Note</label><input className="k-input" placeholder="Reason..." value={returnForm.note} onChange={e=>setReturnForm(f=>({...f,note:e.target.value}))}/></div>
+                </div>
+                <button disabled={!returnForm.product||!returnForm.qty}
+                  onClick={()=>{
+                    const rec={id:Date.now(),branch,type:"return",...returnForm,qty:Number(returnForm.qty)||0};
+                    setInventory(p=>[rec,...p]);
+                    setReturnForm({date:TODAY,product:"",qty:"",note:""});
+                    setInvSaved("return"); setTimeout(()=>setInvSaved(""),3000);
+                    sheetAdd("Inventory",rec).catch(()=>{});
+                  }}
+                  style={{width:"100%",padding:"10px",background:!returnForm.product||!returnForm.qty?"#f1f5f9":"var(--amber)",border:"none",borderRadius:"var(--r-sm)",color:!returnForm.product||!returnForm.qty?"#94a3b8":"#fff",fontFamily:"var(--display)",fontSize:"13px",fontWeight:700,cursor:!returnForm.product||!returnForm.qty?"not-allowed":"pointer"}}>
+                  Log Return
+                </button>
+                {inventory.filter(i=>i.type==="return").length>0 && (
+                  <div style={{marginTop:"16px",paddingTop:"12px",borderTop:"1px solid var(--blue-pale2)"}}>
+                    <p style={{fontSize:"10px",fontWeight:600,color:"var(--text-faint)",textTransform:"uppercase",letterSpacing:".06em",marginBottom:"8px"}}>Recent Returns</p>
+                    {inventory.filter(i=>i.type==="return").slice(0,10).map(i=>(
+                      <div key={i.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 0",borderBottom:"1px solid var(--border)"}}>
+                        <div>
+                          <span style={{fontSize:"12px",fontWeight:600,color:"var(--text)"}}>{i.product}</span>
+                          {i.note&&<span style={{fontSize:"11px",color:"var(--text-faint)",marginLeft:"8px"}}>· {i.note}</span>}
+                        </div>
+                        <div style={{display:"flex",gap:"12px",alignItems:"center"}}>
+                          <span style={{fontFamily:"var(--display)",fontSize:"13px",fontWeight:700,color:"var(--amber)"}}>-{i.qty}</span>
+                          <span style={{fontSize:"11px",color:"var(--text-faint)"}}>{i.date}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </Card>
+            )}
           </div>
         )}
 
