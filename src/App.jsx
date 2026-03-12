@@ -241,6 +241,12 @@ const GS = `
   .shake      { animation: shake     .4s ease; }
   .pulse-anim { animation: pulse     2s ease-in-out infinite; }
 
+  @media (max-width: 600px) {
+    .k-input { font-size: 16px !important; }
+    .mob-col-2 { grid-template-columns: 1fr 1fr !important; }
+    .mob-col-1 { grid-template-columns: 1fr !important; }
+  }
+
   .k-input {
     width: 100%; background: #fff; border: 1.5px solid var(--border);
     color: var(--text); border-radius: var(--r-sm); padding: 9px 12px;
@@ -366,30 +372,35 @@ function TopNav({ subtitle, tabs, activeTab, setActiveTab, onLogout, syncing }) 
           ⟳ SYNCING WITH SHEETS...
         </div>
       )}
-      <div style={{ maxWidth:"960px", margin:"0 auto", padding:"0 16px", height:"56px",
-        display:"flex", alignItems:"center", justifyContent:"space-between", gap:"12px" }}>
-        <div style={{ display:"flex", alignItems:"center", gap:"10px", flexShrink:0 }}>
-          <div style={{ background:"#fff", borderRadius:"8px", padding:"5px 10px",
-            display:"flex", alignItems:"center", gap:"8px", boxShadow:"0 1px 4px rgba(0,0,0,.12)" }}>
-            <KyneLogo size={22} dark/>
-            <span style={{ fontFamily:"var(--display)", fontSize:"14px", fontWeight:800, color:"var(--navy)" }}>Kyne</span>
+      <div style={{ maxWidth:"960px", margin:"0 auto", padding:"0 16px", height:"48px",
+        display:"flex", alignItems:"center", justifyContent:"space-between", gap:"8px" }}>
+        <div style={{ display:"flex", alignItems:"center", gap:"8px", flexShrink:0, minWidth:0 }}>
+          <div style={{ background:"#fff", borderRadius:"8px", padding:"4px 8px", flexShrink:0,
+            display:"flex", alignItems:"center", gap:"6px", boxShadow:"0 1px 4px rgba(0,0,0,.12)" }}>
+            <KyneLogo size={20} dark/>
+            <span style={{ fontFamily:"var(--display)", fontSize:"13px", fontWeight:800, color:"var(--navy)" }}>Kyne</span>
           </div>
-          {subtitle && <p style={{ fontSize:"11px", color:"rgba(255,255,255,.45)", fontWeight:500 }}>{subtitle}</p>}
+          {subtitle && <p style={{ fontSize:"10px", color:"rgba(255,255,255,.45)", fontWeight:500,
+            whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis", minWidth:0 }}>{subtitle}</p>}
         </div>
-        <div style={{ display:"flex", alignItems:"center", gap:"2px", flexWrap:"wrap", justifyContent:"flex-end" }}>
+        <button onClick={onLogout} style={{ flexShrink:0, padding:"5px 10px",
+          borderRadius:"var(--r-sm)", background:"rgba(255,255,255,.08)",
+          border:"1px solid rgba(255,255,255,.18)", color:"rgba(255,255,255,.7)",
+          fontSize:"11px", fontWeight:600, cursor:"pointer", whiteSpace:"nowrap" }}>← Exit</button>
+      </div>
+      <div style={{ overflowX:"auto", WebkitOverflowScrolling:"touch",
+        scrollbarWidth:"none", msOverflowStyle:"none" }}>
+        <div style={{ display:"flex", alignItems:"center", padding:"0 16px",
+          gap:"2px", minWidth:"max-content", borderTop:"1px solid rgba(255,255,255,.08)" }}>
           {tabs.map(t => (
             <button key={t.id} onClick={() => setActiveTab(t.id)} style={{
-              padding:"6px 11px", fontSize:"12px", fontWeight:600, cursor:"pointer",
+              padding:"8px 13px", fontSize:"12px", fontWeight:600, cursor:"pointer",
               border:"none", background: activeTab===t.id ? "rgba(255,255,255,.16)" : "transparent",
               color: activeTab===t.id ? "#fff" : "rgba(255,255,255,.5)",
               borderBottom: activeTab===t.id ? "2px solid #60a5fa" : "2px solid transparent",
-              transition:"all .15s",
+              transition:"all .15s", whiteSpace:"nowrap",
             }}>{t.label}</button>
           ))}
-          <button onClick={onLogout} style={{ marginLeft:"6px", padding:"5px 10px",
-            borderRadius:"var(--r-sm)", background:"rgba(255,255,255,.08)",
-            border:"1px solid rgba(255,255,255,.18)", color:"rgba(255,255,255,.55)",
-            fontSize:"11px", fontWeight:500, cursor:"pointer" }}>← Exit</button>
         </div>
       </div>
     </div>
