@@ -1186,6 +1186,7 @@ function ManagerView({ branch, onLogout }) {
   const [syncing, setSyncing]       = useState(true);
   const [mode, setMode]             = useState("today");
   const [customDate, setCustomDate] = useState("");
+  const [customDateEnd, setCustomDateEnd] = useState("");
   const [showExpForm, setShowExpForm] = useState(false);
   const [inventory, setInventory]     = useState([]);
   const [invSubTab, setInvSubTab]     = useState("stock"); // stock | receive | return
