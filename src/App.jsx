@@ -68,6 +68,37 @@ function getBonusRate(n, riderName) {
   return 700;
 }
 
+const VENDORS = {
+  "LADEX": ["Jandes","Boshjex","Boshjex pro","Xebenco powder","Propazi"],
+  "TOPMO": ["Elipy cap","Elipy balm","Sabbana","HYPERTOP","Vertidem","Topmo cleanser tea","Topmo capsule","Senior cap","Topmo detox","Prosma","Venaba","Tabizo","Charzzy","Elano","Vaniso","Cendez","Sb latein","Suyem","Zavina","Yemit"],
+  "LASUMAX GROUP": ["Padosa","TUNFALZ","Kidema oil","Kidema capsule","Lavosa","Lasumax tea","Lasumax cap","Provena capsule","Provena cleanser","Kenzai"],
+  "MUMART": ["Eye gel","Guava boost","PSORIASIS Cream","5 in 1 facial","Lizard spray","Collagen oil","Foot peeling cream","Stamina pro"],
+  "EDZU": ["Davigormax","Venature","Yilest","QISE Anti wrinkle","A pack","Shilajit capsule","Retinol lotion"],
+  "AKOVIL": ["Chillflex","PYRU TEA","Slimcore","Cendez cleanser","Joint & bone","Wart removal","Beevenom","Beevana","Bhamiza TEA","Dim Capsule"],
+  "VITAL HERB": ["Hermona Tea","Laxira","Calmira","Liver tea"],
+  "ZUMA": ["Perfect X","Loovita","SAAM","Ziphra capsule","Ziphra Tea"],
+  "HORLA": ["Pomegranate","Fenugreek","Diabetic foot cream","Diabilin"],
+  "BAZAKI": ["Ginseng capsule","Ginseng Root tea","Chancaflow","Deos"],
+  "E-CLAX": ["SAAM Renewal face cream","Utogru Teeth whitening"],
+  "SYSTERA": ["Snake venom","SAAM Renewal face cream","Yoxier Lavender cream"],
+  "ABBEX": ["Exfoliating gel"],
+  "ZAKI": ["Beevenom"],
+  "CALLYTUS": ["Biotin and collagen","Nada plus"],
+  "TSEIGBESA": ["Beevana"],
+  "JOHNMAX": ["Herbal bone ointment","Maxman"],
+  "STYLE": ["Mag black","Mag gold","Vintage black","Vintage red","Chenxi","Oulm","Fusili silver","Fusili gold","Bos design","Mag leather"],
+  "LOLLYTOS": ["Small portable juicer","Electronic lunch box","Electric mug","Pulse massager","Wheel roller","Fruit press","Toothbrush sterilizer","Solar camp light","Juicing cup","Leakage fix tape","Rechargeable juice","Mini flask","Mini massager"],
+  "KENDUMA": ["Pet collar","Pet spray","OLEVS wristwatch"],
+  "Madam Gift": ["Building block","Magnetic drawing board","Finger Arithmetic"],
+  "KING ROYCE": ["Reachable car charger"],
+  "KYNE-RANDOM": ["Random energy capsule"],
+  "SMART CLEANSER KYNE": ["Smart Cleanser","Sanora capsule","Sanora balm"],
+  "CEENO LAGOS": ["Nano tapes","Turmeric soaps","Pink lip serum","Shilajit gummies","Brown flower wallpaper","Green flower wallpaper","IMAX SPRAY","Boka toothpaste","Lunavia pen","Fenugreek seed tea"],
+  "ISYLIFE": ["Richard mille","Cctv","INVICTA","Lamborghini","Smart watch","Daniel Wellington"],
+  "GLAMOUR TROVE": ["Kids multivitamin"],
+};
+const VENDOR_NAMES = Object.keys(VENDORS);
+
 const fmt = (n) => `₦${Number(n || 0).toLocaleString("en-NG")}`;
 
 function calcRiderOwed(order) {
@@ -152,12 +183,13 @@ async function sheetUpdate(tab, data) {
 }
 
 // ─── DATE FILTER ──────────────────────────────────────────────────────────────
-function filterByPeriod(list, mode, customDate) {
+function filterByPeriod(list, mode, customDate, customDateEnd) {
+  if (mode === "range" && customDate && customDateEnd) return list.filter(o => o.date >= customDate && o.date <= customDateEnd);
   if (mode === "custom" && customDate) return list.filter(o => o.date === customDate);
   if (mode === "today")  return list.filter(o => o.date === TODAY);
   if (mode === "week") {
     const now = new Date();
-    const dow = now.getDay(); // 0=Sun
+    const dow = now.getDay();
     const mon = new Date(now);
     mon.setDate(now.getDate() - (dow === 0 ? 6 : dow - 1));
     const dates = Array.from({ length: 7 }, (_, i) => {
@@ -335,29 +367,41 @@ function SectionTitle({ title, sub }) {
   );
 }
 
-function PeriodFilter({ mode, setMode, customDate, setCustomDate }) {
+function PeriodFilter({ mode, setMode, customDate, setCustomDate, customDateEnd, setCustomDateEnd }) {
   return (
-    <div style={{ display:"flex", alignItems:"center", gap:"6px", marginBottom:"16px", flexWrap:"wrap" }}>
-      {[["today","Today"],["week","Week"],["month","Month"],["all","All"]].map(([id, lbl]) => (
-        <button key={id} onClick={() => setMode(id)} style={{
-          padding:"5px 14px", borderRadius:"99px", fontSize:"12px", fontWeight:600, cursor:"pointer",
-          border:`1.5px solid ${mode===id ? "var(--blue)" : "var(--border)"}`,
-          background: mode===id ? "var(--blue)" : "#fff",
-          color: mode===id ? "#fff" : "var(--text-dim)", transition:"all .15s",
-        }}>{lbl}</button>
-      ))}
-      <div style={{ marginLeft:"auto", display:"flex", gap:"6px", alignItems:"center" }}>
-        <input type="date" value={customDate}
-          onChange={e => { setCustomDate(e.target.value); setMode("custom"); }}
-          className="k-input"
-          style={{ width:"140px", fontSize:"12px", padding:"5px 10px",
-            borderColor: mode==="custom" ? "var(--blue)" : "var(--border)" }}/>
-        {mode === "custom" && customDate && (
-          <button onClick={() => { setMode("today"); setCustomDate(""); }}
-            style={{ background:"#fff", border:"1.5px solid var(--border)", color:"var(--text-dim)",
-              borderRadius:"var(--r-sm)", padding:"5px 8px", fontSize:"12px", cursor:"pointer" }}>✕</button>
-        )}
+    <div style={{ marginBottom:"16px" }}>
+      <div style={{ display:"flex", alignItems:"center", gap:"6px", flexWrap:"wrap", marginBottom:"8px" }}>
+        {[["today","Today"],["week","Week"],["month","Month"],["range","Range"],["all","All"]].map(([id, lbl]) => (
+          <button key={id} onClick={() => setMode(id)} style={{
+            padding:"5px 14px", borderRadius:"99px", fontSize:"12px", fontWeight:600, cursor:"pointer",
+            border:`1.5px solid ${mode===id ? "var(--blue)" : "var(--border)"}`,
+            background: mode===id ? "var(--blue)" : "#fff",
+            color: mode===id ? "#fff" : "var(--text-dim)", transition:"all .15s",
+          }}>{lbl}</button>
+        ))}
+        <div style={{ marginLeft:"auto", display:"flex", gap:"6px", alignItems:"center" }}>
+          <input type="date" value={customDate}
+            onChange={e => { setCustomDate(e.target.value); setMode("custom"); }}
+            className="k-input"
+            style={{ width:"140px", fontSize:"12px", padding:"5px 10px",
+              borderColor: mode==="custom" ? "var(--blue)" : "var(--border)" }}/>
+          {(mode === "custom" || mode === "range") && customDate && (
+            <button onClick={() => { setMode("today"); setCustomDate(""); if(setCustomDateEnd) setCustomDateEnd(""); }}
+              style={{ background:"#fff", border:"1.5px solid var(--border)", color:"var(--text-dim)",
+                borderRadius:"var(--r-sm)", padding:"5px 8px", fontSize:"12px", cursor:"pointer" }}>✕</button>
+          )}
+        </div>
       </div>
+      {mode === "range" && (
+        <div style={{ display:"flex", alignItems:"center", gap:"8px", background:"var(--blue-pale)", border:"1.5px solid var(--blue-pale2)", borderRadius:"var(--r-sm)", padding:"8px 12px" }}>
+          <span style={{ fontSize:"11px", color:"var(--text-dim)", fontWeight:600, whiteSpace:"nowrap" }}>From</span>
+          <input type="date" value={customDate} onChange={e => setCustomDate(e.target.value)}
+            className="k-input" style={{ flex:1, fontSize:"12px", padding:"5px 8px" }}/>
+          <span style={{ fontSize:"11px", color:"var(--text-dim)", fontWeight:600, whiteSpace:"nowrap" }}>To</span>
+          <input type="date" value={customDateEnd||""} onChange={e => setCustomDateEnd && setCustomDateEnd(e.target.value)}
+            className="k-input" style={{ flex:1, fontSize:"12px", padding:"5px 8px" }}/>
+        </div>
+      )}
     </div>
   );
 }
@@ -639,9 +683,10 @@ function RiderManagerView({ branch, onLogout }) {
   const [saved, setSaved]       = useState(false);
   const [mode, setMode]         = useState("today");
   const [customDate, setCustomDate] = useState("");
+  const [customDateEnd, setCustomDateEnd] = useState("");
 
   // ── Order form state ──
-  const blankProduct = { name: "", qty: 1, price: "" };
+  const blankProduct = { vendor: VENDOR_NAMES[0], name: "", qty: 1, price: "" };
   const blankOrder   = { date: TODAY, rider: RIDERS[branch][0], customerName: "", address: "", products: [{ ...blankProduct }] };
   const [form, setForm]         = useState(blankOrder);
   const [editingId, setEditingId] = useState(null);
@@ -671,7 +716,12 @@ function RiderManagerView({ branch, onLogout }) {
     setForm(f => ({ ...f, products: f.products.filter((_, idx) => idx !== i) }));
   }
   function setProduct(i, k, v) {
-    setForm(f => ({ ...f, products: f.products.map((p, idx) => idx === i ? { ...p, [k]: v } : p) }));
+    setForm(f => ({ ...f, products: f.products.map((p, idx) => {
+      if (idx !== i) return p;
+      // If vendor changes, reset product name
+      if (k === "vendor") return { ...p, vendor: v, name: "" };
+      return { ...p, [k]: v };
+    }) }));
   }
 
   // ── Submit new order ──
@@ -737,7 +787,7 @@ function RiderManagerView({ branch, onLogout }) {
     sheetAdd("RoadExpenses", re).catch(() => {});
   }
 
-  const filtered   = filterByPeriod(orders, mode, customDate);
+  const filtered   = filterByPeriod(orders, mode, customDate, customDateEnd);
   const pending    = filtered.filter(o => o.status === "Pending");
   const delivered  = filtered.filter(o => o.status === "Delivered");
   const failed     = filtered.filter(o => o.status === "Failed");
@@ -800,24 +850,38 @@ function RiderManagerView({ branch, onLogout }) {
                 <button onClick={addProduct} style={{ background: "var(--blue-pale)", border: "1.5px solid var(--blue-pale2)", color: "var(--blue)", borderRadius: "var(--r-sm)", padding: "4px 12px", fontSize: "11px", fontWeight: 700, cursor: "pointer" }}>+ Add Product</button>
               </div>
               {form.products.map((p, i) => (
-                <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 60px 100px 32px", gap: "8px", marginBottom: "10px", alignItems: "end" }}>
-                  <div>
-                    {i === 0 && <label className="k-label">Product Name</label>}
-                    <input className="k-input" placeholder="e.g. Laptop, Fan..." value={p.name} onChange={e => setProduct(i, "name", e.target.value)} />
-                  </div>
-                  <div>
-                    {i === 0 && <label className="k-label">Qty</label>}
-                    <input type="number" className="k-input" min="1" value={p.qty} onChange={e => setProduct(i, "qty", e.target.value)} />
-                  </div>
-                  <div>
-                    {i === 0 && <label className="k-label">Price (₦)</label>}
-                    <input type="number" className="k-input" placeholder="0" value={p.price} onChange={e => setProduct(i, "price", e.target.value)} />
-                  </div>
-                  <div>
-                    {i === 0 && <label className="k-label" style={{ visibility: "hidden" }}>.</label>}
+                <div key={i} style={{ background:"var(--surface2)", border:"1px solid var(--border)", borderRadius:"var(--r-sm)", padding:"10px", marginBottom:"10px" }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"8px" }}>
+                    <span style={{ fontSize:"11px", fontWeight:600, color:"var(--text-dim)" }}>Item {i+1}</span>
                     {form.products.length > 1 && (
-                      <button onClick={() => removeProduct(i)} style={{ width: "32px", height: "38px", background: "#fef2f2", border: "1.5px solid #fecaca", borderRadius: "var(--r-sm)", color: "var(--red)", fontSize: "14px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>
+                      <button onClick={() => removeProduct(i)} style={{ background:"#fef2f2", border:"1.5px solid #fecaca", borderRadius:"var(--r-sm)", color:"var(--red)", fontSize:"11px", fontWeight:600, cursor:"pointer", padding:"2px 8px" }}>Remove</button>
                     )}
+                  </div>
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"8px", marginBottom:"8px" }}>
+                    <div>
+                      <label className="k-label">Vendor</label>
+                      <select className="k-input" value={p.vendor||""} onChange={e => setProduct(i, "vendor", e.target.value)}>
+                        <option value="">Select vendor...</option>
+                        {VENDOR_NAMES.map(v => <option key={v} value={v}>{v}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="k-label">Product</label>
+                      <select className="k-input" value={p.name||""} onChange={e => setProduct(i, "name", e.target.value)} disabled={!p.vendor}>
+                        <option value="">Select product...</option>
+                        {p.vendor && (VENDORS[p.vendor]||[]).map(n => <option key={n} value={n}>{n}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"8px" }}>
+                    <div>
+                      <label className="k-label">Qty</label>
+                      <input type="number" className="k-input" min="1" value={p.qty} onChange={e => setProduct(i, "qty", e.target.value)} />
+                    </div>
+                    <div>
+                      <label className="k-label">Price (₦)</label>
+                      <input type="number" className="k-input" placeholder="0" value={p.price} onChange={e => setProduct(i, "price", e.target.value)} />
+                    </div>
                   </div>
                 </div>
               ))}
@@ -916,10 +980,27 @@ function RiderManagerView({ branch, onLogout }) {
 
                   <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: "10px" }}>Edit Products</p>
                   {editForm.products.map((p, i) => (
-                    <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 60px 100px", gap: "8px", marginBottom: "8px" }}>
-                      <input className="k-input" placeholder="Product name" value={p.name} onChange={e => setEditForm(f => ({ ...f, products: f.products.map((pp, ii) => ii === i ? { ...pp, name: e.target.value } : pp) }))} />
-                      <input type="number" className="k-input" min="1" value={p.qty} onChange={e => setEditForm(f => ({ ...f, products: f.products.map((pp, ii) => ii === i ? { ...pp, qty: e.target.value } : pp) }))} />
-                      <input type="number" className="k-input" placeholder="Price" value={p.price} onChange={e => setEditForm(f => ({ ...f, products: f.products.map((pp, ii) => ii === i ? { ...pp, price: e.target.value } : pp) }))} />
+                    <div key={i} style={{ background:"var(--surface2)", border:"1px solid var(--border)", borderRadius:"var(--r-sm)", padding:"10px", marginBottom:"8px" }}>
+                      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"8px", marginBottom:"8px" }}>
+                        <div>
+                          <label className="k-label">Vendor</label>
+                          <select className="k-input" value={p.vendor||""} onChange={e => setEditForm(f => ({ ...f, products: f.products.map((pp,ii) => ii===i ? {...pp, vendor:e.target.value, name:""} : pp) }))}>
+                            <option value="">Select vendor...</option>
+                            {VENDOR_NAMES.map(v => <option key={v} value={v}>{v}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="k-label">Product</label>
+                          <select className="k-input" value={p.name||""} onChange={e => setEditForm(f => ({ ...f, products: f.products.map((pp,ii) => ii===i ? {...pp, name:e.target.value} : pp) }))} disabled={!p.vendor}>
+                            <option value="">Select product...</option>
+                            {p.vendor && (VENDORS[p.vendor]||[]).map(n => <option key={n} value={n}>{n}</option>)}
+                          </select>
+                        </div>
+                      </div>
+                      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"8px" }}>
+                        <div><label className="k-label">Qty</label><input type="number" className="k-input" min="1" value={p.qty} onChange={e => setEditForm(f => ({ ...f, products: f.products.map((pp,ii) => ii===i ? {...pp, qty:e.target.value} : pp) }))}/></div>
+                        <div><label className="k-label">Price (₦)</label><input type="number" className="k-input" placeholder="Price" value={p.price} onChange={e => setEditForm(f => ({ ...f, products: f.products.map((pp,ii) => ii===i ? {...pp, price:e.target.value} : pp) }))}/></div>
+                      </div>
                     </div>
                   ))}
 
@@ -1108,6 +1189,7 @@ function ManagerView({ branch, onLogout }) {
   const [showExpForm, setShowExpForm] = useState(false);
   const [inventory, setInventory]     = useState([]);
   const [invSubTab, setInvSubTab]     = useState("stock"); // stock | receive | return
+  const [invSearch, setInvSearch]     = useState("");
   const blankReceive = { date: TODAY, vendor: "", product: "", qty: "" };
   const blankReturn  = { date: TODAY, product: "", qty: "", note: "" };
   const [receiveForm, setReceiveForm] = useState({ date: TODAY, vendor: "", product: "", qty: "" });
@@ -1211,11 +1293,11 @@ function ManagerView({ branch, onLogout }) {
     sheetAdd("Expenses", e).catch(() => {});
   }
 
-  const fOrders   = filterByPeriod(orders,     mode, customDate);
-  const fExpenses = filterByPeriod(expenses,    mode, customDate);
+  const fOrders   = filterByPeriod(orders,     mode, customDate, customDateEnd);
+  const fExpenses = filterByPeriod(expenses,    mode, customDate, customDateEnd);
 
   // Send to Boss calculations — driven by mode/customDate filter
-  const filteredRiderPayments = Object.values(riderPayments).filter(r => filterByPeriod([{date:r.date}], mode, customDate).length > 0);
+  const filteredRiderPayments = Object.values(riderPayments).filter(r => filterByPeriod([{date:r.date}], mode, customDate, customDateEnd).length > 0);
   const todayRiderTotal  = fOrders.reduce((s, o) => s + orderTotal(o), 0);
   const todayBranchExp   = fExpenses.reduce((s, e) => s + e.amount, 0);
   // POS collected in period (auto to boss)
@@ -1224,7 +1306,7 @@ function ManagerView({ branch, onLogout }) {
   const todayCash = filteredRiderPayments.reduce((s, r) => s + (r.cash || 0), 0);
   // Cash to remit to boss = cash collected - branch expenses
   const todayCashToRemit = Math.max(0, todayCash - todayBranchExp);
-  const todayAlreadySent = filterByPeriod(remittances, mode, customDate).reduce((s, r) => s + r.remittedAmount, 0);
+  const todayAlreadySent = filterByPeriod(remittances, mode, customDate, customDateEnd).reduce((s, r) => s + r.remittedAmount, 0);
   const todayRemaining   = Math.max(0, todayCashToRemit - todayAlreadySent);
 
   // Get unique rider-date combos from delivered orders in filtered period
@@ -1263,8 +1345,8 @@ function ManagerView({ branch, onLogout }) {
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px", marginBottom: "16px" }}>
               <StatCard label="Total Orders Value" value={fmt(fOrders.reduce((s, o) => s + orderTotal(o), 0))} accent="blue" />
-              <StatCard label="Cash Collected"     value={fmt(Object.values(riderPayments).filter(r => filterByPeriod([{ date: r.date }], mode, customDate).length > 0).reduce((s, r) => s + (r.cash || 0), 0))} accent="green" />
-              <StatCard label="POS Collected"      value={fmt(Object.values(riderPayments).filter(r => filterByPeriod([{ date: r.date }], mode, customDate).length > 0).reduce((s, r) => s + (r.pos || 0), 0))} accent="blue" />
+              <StatCard label="Cash Collected"     value={fmt(Object.values(riderPayments).filter(r => filterByPeriod([{ date: r.date }], mode, customDate, customDateEnd).length > 0).reduce((s, r) => s + (r.cash || 0), 0))} accent="green" />
+              <StatCard label="POS Collected"      value={fmt(Object.values(riderPayments).filter(r => filterByPeriod([{ date: r.date }], mode, customDate, customDateEnd).length > 0).reduce((s, r) => s + (r.pos || 0), 0))} accent="blue" />
             </div>
 
             {/* Rider payment cards */}
@@ -1447,10 +1529,10 @@ function ManagerView({ branch, onLogout }) {
             {remittances.length > 0 && (
               <div style={{ marginTop: "24px" }}>
                 <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-faint)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: "8px" }}>Past Remittances</p>
-                <PeriodFilter mode={mode} setMode={setMode} customDate={customDate} setCustomDate={setCustomDate}/>
-                {filterByPeriod(remittances, mode, customDate).length === 0
+                <PeriodFilter mode={mode} setMode={setMode} customDate={customDate} setCustomDate={setCustomDate} customDateEnd={customDateEnd} setCustomDateEnd={setCustomDateEnd}/>
+                {filterByPeriod(remittances, mode, customDate, customDateEnd).length === 0
                   ? <p style={{ textAlign:"center", padding:"24px 0", fontSize:"13px", color:"var(--text-faint)" }}>No remittances in this period</p>
-                  : filterByPeriod(remittances, mode, customDate).map(r => <RemitCard key={r.id} rec={r} />)
+                  : filterByPeriod(remittances, mode, customDate, customDateEnd).map(r => <RemitCard key={r.id} rec={r} />)
                 }
               </div>
             )}
@@ -1520,62 +1602,95 @@ function ManagerView({ branch, onLogout }) {
 
             {/* ── STOCK OVERVIEW ── */}
             {invSubTab === "stock" && (() => {
-              // Build stock map: received - delivered - returned
-              const stockMap = {};
-              // Add received
+              // Build vendor→product stock map
+              const vendorMap = {};
               inventory.filter(i=>i.type==="receive").forEach(i=>{
-                const n = (i.product||"").trim();
+                const v=(i.vendor||"Unknown").trim(), n=(i.product||"").trim();
                 if (!n) return;
-                if (!stockMap[n]) stockMap[n] = { received:0, delivered:0, returned:0, vendor:"" };
-                stockMap[n].received += Number(i.qty)||0;
-                stockMap[n].vendor    = i.vendor || stockMap[n].vendor;
+                if (!vendorMap[v]) vendorMap[v]={};
+                if (!vendorMap[v][n]) vendorMap[v][n]={received:0,delivered:0,returned:0};
+                vendorMap[v][n].received += Number(i.qty)||0;
               });
-              // Subtract delivered (from all orders ever, not filtered)
               orders.forEach(o=>{
-                const prods = typeof o.products==="string" ? (()=>{try{return JSON.parse(o.products);}catch{return [];}})() : (o.products||[]);
+                const prods = typeof o.products==="string"?(()=>{try{return JSON.parse(o.products);}catch{return [];}})():(o.products||[]);
                 prods.forEach(p=>{
-                  const n=(p.name||"").trim();
-                  if (!n||!stockMap[n]) return;
-                  stockMap[n].delivered += Number(p.qty)||1;
+                  const v=(p.vendor||"Unknown").trim(), n=(p.name||"").trim();
+                  if (!n) return;
+                  if (!vendorMap[v]) vendorMap[v]={};
+                  if (!vendorMap[v][n]) vendorMap[v][n]={received:0,delivered:0,returned:0};
+                  vendorMap[v][n].delivered += Number(p.qty)||1;
                 });
               });
-              // Subtract returned
               inventory.filter(i=>i.type==="return").forEach(i=>{
-                const n=(i.product||"").trim();
-                if (!n||!stockMap[n]) return;
-                stockMap[n].returned += Number(i.qty)||0;
+                const v=(i.vendor||"Unknown").trim(), n=(i.product||"").trim();
+                if (!n||!vendorMap[v]||!vendorMap[v][n]) return;
+                vendorMap[v][n].returned += Number(i.qty)||0;
               });
-              const items = Object.entries(stockMap).map(([name,s])=>({
-                name, ...s, remaining: s.received - s.delivered - s.returned
-              })).sort((a,b)=>b.remaining-a.remaining);
-              if (items.length===0) return <p style={{textAlign:"center",padding:"48px 0",fontSize:"13px",color:"var(--text-faint)"}}>No inventory records yet. Use ➕ Receive to add stock.</p>;
+
+              const vendorList = Object.keys(vendorMap).sort();
+              if (vendorList.length===0) return <p style={{textAlign:"center",padding:"48px 0",fontSize:"13px",color:"var(--text-faint)"}}>No inventory yet. Use ➕ Receive to add stock.</p>;
+
               return (
-                <div style={{display:"flex",flexDirection:"column",gap:"10px"}}>
-                  {items.map(item=>(
-                    <div key={item.name} style={{
-                      background: item.remaining<=0?"#fef2f2":"#fff",
-                      border:`1.5px solid ${item.remaining<=0?"#fecaca":"var(--border)"}`,
-                      borderRadius:"var(--r)", padding:"14px 16px", boxShadow:"var(--shadow)"
-                    }}>
-                      <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:"10px"}}>
-                        <div>
-                          <p style={{fontFamily:"var(--display)",fontSize:"14px",fontWeight:700}}>{item.name}</p>
-                          {item.vendor&&<p style={{fontSize:"11px",color:"var(--text-faint)",marginTop:"2px"}}>Vendor: {item.vendor}</p>}
+                <>
+                  <input className="k-input" placeholder="🔍 Search vendor or product..." value={invSearch||""} onChange={e=>setInvSearch(e.target.value)} style={{marginBottom:"12px"}}/>
+                  {vendorList.filter(v => !invSearch || v.toLowerCase().includes(invSearch.toLowerCase()) || Object.keys(vendorMap[v]).some(p=>p.toLowerCase().includes(invSearch.toLowerCase()))).map(vendor=>{
+                    const products = Object.entries(vendorMap[vendor])
+                      .filter(([name])=> !invSearch || vendor.toLowerCase().includes(invSearch.toLowerCase()) || name.toLowerCase().includes(invSearch.toLowerCase()))
+                      .map(([name,s])=>({name,...s,remaining:s.received-s.delivered-s.returned}));
+                    if (products.length===0) return null;
+                    return (
+                      <div key={vendor} style={{marginBottom:"16px"}}>
+                        <div style={{background:"var(--navy)",borderRadius:"var(--r-sm)",padding:"8px 14px",marginBottom:"8px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                          <p style={{fontFamily:"var(--display)",fontSize:"13px",fontWeight:800,color:"#fff"}}>{vendor}</p>
+                          <span style={{fontSize:"11px",color:"rgba(255,255,255,.5)"}}>{products.length} products</span>
                         </div>
-                        <div style={{textAlign:"center",background:item.remaining<=0?"#fecaca":"var(--blue-pale)",border:`1px solid ${item.remaining<=0?"#fca5a5":"var(--blue-pale2)"}`,borderRadius:"var(--r-sm)",padding:"6px 14px"}}>
-                          <p style={{fontSize:"9px",fontWeight:600,color:item.remaining<=0?"var(--red)":"var(--blue)",textTransform:"uppercase",letterSpacing:".06em",marginBottom:"2px"}}>Remaining</p>
-                          <p style={{fontFamily:"var(--display)",fontSize:"22px",fontWeight:800,color:item.remaining<=0?"var(--red)":"var(--blue)",lineHeight:1}}>{item.remaining}</p>
+                        <div style={{display:"flex",flexDirection:"column",gap:"6px"}}>
+                          {products.map(item=>(
+                            <div key={item.name} style={{
+                              background:item.remaining<=0?"#fef2f2":"#fff",
+                              border:`1.5px solid ${item.remaining<=0?"#fecaca":"var(--border)"}`,
+                              borderRadius:"var(--r-sm)", padding:"10px 14px",
+                              display:"flex", alignItems:"center", justifyContent:"space-between",
+                              boxShadow:"var(--shadow)"
+                            }}>
+                              <p style={{fontSize:"13px",fontWeight:600,color:item.remaining<=0?"var(--red)":"var(--text)"}}>{item.name}</p>
+                              <div style={{display:"flex",gap:"10px",alignItems:"center"}}>
+                                {[["In",item.received,"var(--green)"],["Out",item.delivered,"var(--blue)"],["Ret",item.returned,"var(--amber)"]].map(([label,val,color])=>(
+                                  <div key={label} style={{textAlign:"center",minWidth:"32px"}}>
+                                    <p style={{fontSize:"9px",color:"var(--text-faint)",fontWeight:600,marginBottom:"1px"}}>{label}</p>
+                                    <p style={{fontFamily:"var(--display)",fontSize:"13px",fontWeight:700,color}}>{val}</p>
+                                  </div>
+                                ))}
+                                <div style={{textAlign:"center",background:item.remaining<=0?"#fecaca":"var(--blue-pale)",border:`1px solid ${item.remaining<=0?"#fca5a5":"var(--blue-pale2)"}`,borderRadius:"var(--r-sm)",padding:"4px 10px",minWidth:"48px"}}>
+                                  <p style={{fontSize:"9px",fontWeight:600,color:item.remaining<=0?"var(--red)":"var(--blue)",marginBottom:"1px"}}>Left</p>
+                                  <p style={{fontFamily:"var(--display)",fontSize:"16px",fontWeight:800,color:item.remaining<=0?"var(--red)":"var(--blue)",lineHeight:1}}>{item.remaining}</p>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       </div>
-                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"8px"}}>
-                        {[["Received",item.received,"var(--green)"],["Delivered",item.delivered,"var(--blue)"],["Returned",item.returned,"var(--amber)"]].map(([label,val,color])=>(
-                          <div key={label} style={{background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"var(--r-sm)",padding:"8px",textAlign:"center"}}>
-                            <p style={{fontSize:"9px",fontWeight:600,color:"var(--text-faint)",marginBottom:"2px"}}>{label}</p>
-                            <p style={{fontFamily:"var(--display)",fontSize:"14px",fontWeight:700,color}}>{val}</p>
-                          </div>
-                        ))}
+                    );
+                  })}
+                </>
+              );
+            })()}
+
+            {/* ── OTHER BRANCHES STOCK (read-only) ── */}
+            {invSubTab === "stock" && (() => {
+              const otherBranches = BRANCHES.filter(b => b !== branch);
+              return (
+                <div style={{marginTop:"24px"}}>
+                  <p style={{fontSize:"11px",fontWeight:600,color:"var(--text-faint)",textTransform:"uppercase",letterSpacing:".06em",marginBottom:"10px"}}>Other Branches Stock (Read Only)</p>
+                  {otherBranches.map(ob => (
+                    <details key={ob} style={{marginBottom:"8px"}}>
+                      <summary style={{background:"var(--surface2)",border:"1.5px solid var(--border)",borderRadius:"var(--r-sm)",padding:"10px 14px",cursor:"pointer",fontSize:"13px",fontWeight:600,color:"var(--text-dim)",listStyle:"none",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                        <span>{ob} Branch</span><span style={{fontSize:"11px",color:"var(--text-faint)"}}>tap to expand ▾</span>
+                      </summary>
+                      <div style={{padding:"8px 0"}}>
+                        <p style={{fontSize:"11px",color:"var(--text-faint)",textAlign:"center",padding:"8px"}}>Load {ob} inventory from Sheets to view</p>
                       </div>
-                    </div>
+                    </details>
                   ))}
                 </div>
               );
@@ -1598,7 +1713,7 @@ function ManagerView({ branch, onLogout }) {
               const products = Object.entries(productMap).sort((a,b)=>b[1].qty-a[1].qty);
               return (
                 <>
-                  <PeriodFilter mode={mode} setMode={setMode} customDate={customDate} setCustomDate={setCustomDate}/>
+                  <PeriodFilter mode={mode} setMode={setMode} customDate={customDate} setCustomDate={setCustomDate} customDateEnd={customDateEnd} setCustomDateEnd={setCustomDateEnd}/>
                   {products.length===0
                     ? <p style={{textAlign:"center",padding:"48px 0",fontSize:"13px",color:"var(--text-faint)"}}>No delivered products in this period</p>
                     : <div style={{display:"flex",flexDirection:"column",gap:"8px"}}>
@@ -1635,8 +1750,20 @@ function ManagerView({ branch, onLogout }) {
                 </div>
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"12px",marginBottom:"14px"}}>
                   <div><label className="k-label">Date</label><input type="date" className="k-input" value={receiveForm.date} onChange={e=>setReceiveForm(f=>({...f,date:e.target.value}))}/></div>
-                  <div><label className="k-label">Vendor Name</label><input className="k-input" placeholder="e.g. ABC Electronics" value={receiveForm.vendor} onChange={e=>setReceiveForm(f=>({...f,vendor:e.target.value}))}/></div>
-                  <div><label className="k-label">Product Name</label><input className="k-input" placeholder="e.g. Laptop" value={receiveForm.product} onChange={e=>setReceiveForm(f=>({...f,product:e.target.value}))}/></div>
+                  <div>
+                    <label className="k-label">Vendor Name</label>
+                    <select className="k-input" value={receiveForm.vendor} onChange={e=>setReceiveForm(f=>({...f,vendor:e.target.value,product:""}))}>
+                      <option value="">Select vendor...</option>
+                      {VENDOR_NAMES.map(v=><option key={v} value={v}>{v}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="k-label">Product Name</label>
+                    <select className="k-input" value={receiveForm.product} onChange={e=>setReceiveForm(f=>({...f,product:e.target.value}))} disabled={!receiveForm.vendor}>
+                      <option value="">Select product...</option>
+                      {receiveForm.vendor && (VENDORS[receiveForm.vendor]||[]).map(p=><option key={p} value={p}>{p}</option>)}
+                    </select>
+                  </div>
                   <div><label className="k-label">Quantity</label><input type="number" className="k-input" placeholder="0" min="1" value={receiveForm.qty} onChange={e=>setReceiveForm(f=>({...f,qty:e.target.value}))}/></div>
                 </div>
                 <button disabled={!receiveForm.vendor||!receiveForm.product||!receiveForm.qty}
@@ -1779,22 +1906,25 @@ function BossView({ onLogout }) {
   const [tab, setTab]               = useState("overview");
   const [mode, setMode]             = useState("today");
   const [customDate, setCustomDate] = useState("");
+  const [customDateEnd, setCustomDateEnd] = useState("");
   const [orders, setOrders]         = useState([]);
   const [expenses, setExpenses]     = useState([]);
   const [remittances, setRemittances] = useState([]);
   const [syncing, setSyncing]       = useState(true);
 
   const [riderPayments, setRiderPayments] = useState([]);
+  const [inventory, setInventory]         = useState([]);
+  const [bossInvSearch, setBossInvSearch] = useState("");
   useEffect(() => {
     setSyncing(true);
-    Promise.all([sheetGet("Orders"),sheetGet("Expenses"),sheetGet("Remittances"),sheetGet("RiderPayments"),sheetGet("RoadExpenses")])
-      .then(([o,e,r,rp,re]) => { setOrders(o); setExpenses(e); setRemittances(r); setRiderPayments(rp); })
+    Promise.all([sheetGet("Orders"),sheetGet("Expenses"),sheetGet("Remittances"),sheetGet("RiderPayments"),sheetGet("RoadExpenses"),sheetGet("Inventory")])
+      .then(([o,e,r,rp,re,inv]) => { setOrders(o); setExpenses(e); setRemittances(r); setRiderPayments(rp); setInventory(inv); })
       .catch(()=>{}).finally(()=>setSyncing(false));
   }, []);
 
-  const fOrders   = filterByPeriod(orders,     mode, customDate);
-  const fExpenses = filterByPeriod(expenses,    mode, customDate);
-  const fRemit    = filterByPeriod(remittances, mode, customDate);
+  const fOrders   = filterByPeriod(orders,     mode, customDate, customDateEnd);
+  const fExpenses = filterByPeriod(expenses,    mode, customDate, customDateEnd);
+  const fRemit    = filterByPeriod(remittances, mode, customDate, customDateEnd);
   const period    = getBonusPeriod();
 
   function getOrderTotal(order) {
@@ -1814,7 +1944,7 @@ function BossView({ onLogout }) {
     const remitRecs = fRemit.filter(r=>r.branch===b);
     const totalSent = remitRecs.reduce((s,r)=>s+r.remittedAmount,0);
     // Cash and POS from RiderPayments for this branch in this period
-    const bRiderPays = riderPayments.filter(rp=>rp.branch===b && filterByPeriod([{date:rp.date}],mode,customDate).length>0);
+    const bRiderPays = riderPayments.filter(rp=>rp.branch===b && filterByPeriod([{date:rp.date}],mode,customDate, customDateEnd).length>0);
     const cashCollected = bRiderPays.reduce((s,rp)=>s+(Number(rp.cash)||0),0);
     const posCollected  = bRiderPays.reduce((s,rp)=>s+(Number(rp.pos)||0),0);
     // Net cash expected to remit = cash collected - branch expenses
@@ -1848,7 +1978,7 @@ function BossView({ onLogout }) {
 
   const grandDiff = grand.sent - grand.expected;
 
-  const TABS = [{id:"overview",label:"Overview"},{id:"remittances",label:"Remittances"},{id:"branches",label:"Branches"},{id:"riders",label:"All Riders"},{id:"orders",label:"Orders"}];
+  const TABS = [{id:"overview",label:"Overview"},{id:"remittances",label:"Remittances"},{id:"branches",label:"Branches"},{id:"riders",label:"All Riders"},{id:"inventory",label:"Inventory"},{id:"orders",label:"Orders"}];
 
   return (
     <div style={{ minHeight:"100vh", background:"var(--bg)" }}>
@@ -1859,7 +1989,7 @@ function BossView({ onLogout }) {
         {tab==="overview" && (
           <div className="fade-in">
             <SectionTitle title="All Branches Overview"/>
-            <PeriodFilter mode={mode} setMode={setMode} customDate={customDate} setCustomDate={setCustomDate}/>
+            <PeriodFilter mode={mode} setMode={setMode} customDate={customDate} setCustomDate={setCustomDate} customDateEnd={customDateEnd} setCustomDateEnd={setCustomDateEnd}/>
             {branchStats.filter(b=>Math.abs(b.diff)>0).map(b=>(
               <div key={b.branch} className={b.diff<0?"pulse-anim":""} style={{
                 background:b.diff<0?"#fef2f2":"#fffbeb",
@@ -1937,7 +2067,7 @@ function BossView({ onLogout }) {
         {tab==="remittances" && (
           <div className="fade-in">
             <SectionTitle title="Branch Remittances"/>
-            <PeriodFilter mode={mode} setMode={setMode} customDate={customDate} setCustomDate={setCustomDate}/>
+            <PeriodFilter mode={mode} setMode={setMode} customDate={customDate} setCustomDate={setCustomDate} customDateEnd={customDateEnd} setCustomDateEnd={setCustomDateEnd}/>
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:"10px", marginBottom:"20px" }}>
               <StatCard label="Expected" value={fmt(grand.expected)}/>
               <StatCard label="Received" value={fmt(grand.sent)} accent={grandDiff>=0?"green":"red"}/>
@@ -1966,7 +2096,7 @@ function BossView({ onLogout }) {
         {tab==="branches" && (
           <div className="fade-in">
             <SectionTitle title="Branch Breakdown"/>
-            <PeriodFilter mode={mode} setMode={setMode} customDate={customDate} setCustomDate={setCustomDate}/>
+            <PeriodFilter mode={mode} setMode={setMode} customDate={customDate} setCustomDate={setCustomDate} customDateEnd={customDateEnd} setCustomDateEnd={setCustomDateEnd}/>
             <div style={{ display:"flex", flexDirection:"column", gap:"12px" }}>
               {branchStats.map(b => (
                 <Card key={b.branch}>
@@ -2039,10 +2169,89 @@ function BossView({ onLogout }) {
           </div>
         )}
 
+        {tab==="inventory" && (
+          <div className="fade-in">
+            <SectionTitle title="All Branches Inventory"/>
+            <input className="k-input" placeholder="🔍 Search vendor or product..." value={bossInvSearch} onChange={e=>setBossInvSearch(e.target.value)} style={{marginBottom:"16px"}}/>
+            {BRANCHES.map(b => {
+              // Build vendor→product stock map for this branch
+              const vendorMap = {};
+              inventory.filter(i=>i.branch===b && i.type==="receive").forEach(i=>{
+                const v=(i.vendor||"Unknown").trim(), n=(i.product||"").trim();
+                if (!n) return;
+                if (!vendorMap[v]) vendorMap[v]={};
+                if (!vendorMap[v][n]) vendorMap[v][n]={received:0,delivered:0,returned:0};
+                vendorMap[v][n].received += Number(i.qty)||0;
+              });
+              orders.filter(o=>o.branch===b).forEach(o=>{
+                const prods = typeof o.products==="string"?(()=>{try{return JSON.parse(o.products);}catch{return [];}})():(o.products||[]);
+                prods.forEach(p=>{
+                  const v=(p.vendor||"Unknown").trim(), n=(p.name||"").trim();
+                  if (!n) return;
+                  if (!vendorMap[v]) vendorMap[v]={};
+                  if (!vendorMap[v][n]) vendorMap[v][n]={received:0,delivered:0,returned:0};
+                  vendorMap[v][n].delivered += Number(p.qty)||1;
+                });
+              });
+              inventory.filter(i=>i.branch===b && i.type==="return").forEach(i=>{
+                const v=(i.vendor||"Unknown").trim(), n=(i.product||"").trim();
+                if (!n||!vendorMap[v]||!vendorMap[v][n]) return;
+                vendorMap[v][n].returned += Number(i.qty)||0;
+              });
+
+              const vendorList = Object.keys(vendorMap).filter(v =>
+                !bossInvSearch ||
+                v.toLowerCase().includes(bossInvSearch.toLowerCase()) ||
+                Object.keys(vendorMap[v]).some(p=>p.toLowerCase().includes(bossInvSearch.toLowerCase()))
+              ).sort();
+              if (vendorList.length===0) return null;
+
+              return (
+                <div key={b} style={{marginBottom:"24px"}}>
+                  <div style={{background:"var(--navy)",borderRadius:"var(--r)",padding:"10px 16px",marginBottom:"10px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <p style={{fontFamily:"var(--display)",fontSize:"15px",fontWeight:800,color:"#fff"}}>{b} Branch</p>
+                    <span style={{fontSize:"11px",color:"rgba(255,255,255,.5)"}}>{vendorList.length} vendors</span>
+                  </div>
+                  {vendorList.map(vendor=>{
+                    const products = Object.entries(vendorMap[vendor])
+                      .filter(([name])=> !bossInvSearch || vendor.toLowerCase().includes(bossInvSearch.toLowerCase()) || name.toLowerCase().includes(bossInvSearch.toLowerCase()))
+                      .map(([name,s])=>({name,...s,remaining:s.received-s.delivered-s.returned}));
+                    return (
+                      <div key={vendor} style={{marginBottom:"10px"}}>
+                        <p style={{fontSize:"11px",fontWeight:700,color:"var(--blue)",textTransform:"uppercase",letterSpacing:".06em",marginBottom:"6px",paddingLeft:"4px"}}>{vendor}</p>
+                        <div style={{display:"flex",flexDirection:"column",gap:"4px"}}>
+                          {products.map(item=>(
+                            <div key={item.name} style={{
+                              background:item.remaining<=0?"#fef2f2":"#fff",
+                              border:`1.5px solid ${item.remaining<=0?"#fecaca":"var(--border)"}`,
+                              borderRadius:"var(--r-sm)", padding:"8px 14px",
+                              display:"flex", alignItems:"center", justifyContent:"space-between"
+                            }}>
+                              <p style={{fontSize:"12px",fontWeight:600,color:item.remaining<=0?"var(--red)":"var(--text)"}}>{item.name}</p>
+                              <div style={{display:"flex",gap:"10px",alignItems:"center"}}>
+                                {[["In",item.received,"var(--green)"],["Out",item.delivered,"var(--blue)"],["Ret",item.returned,"var(--amber)"],["Left",item.remaining,item.remaining<=0?"var(--red)":"var(--blue)"]].map(([label,val,color])=>(
+                                  <div key={label} style={{textAlign:"center",minWidth:"28px"}}>
+                                    <p style={{fontSize:"8px",color:"var(--text-faint)",fontWeight:600,marginBottom:"1px"}}>{label}</p>
+                                    <p style={{fontFamily:"var(--display)",fontSize:"13px",fontWeight:700,color}}>{val}</p>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
         {tab==="orders" && (
           <div className="fade-in">
             <SectionTitle title="All Orders"/>
-            <PeriodFilter mode={mode} setMode={setMode} customDate={customDate} setCustomDate={setCustomDate}/>
+            <PeriodFilter mode={mode} setMode={setMode} customDate={customDate} setCustomDate={setCustomDate} customDateEnd={customDateEnd} setCustomDateEnd={setCustomDateEnd}/>
             <div style={{ display:"flex", flexDirection:"column", gap:"8px" }}>
               {fOrders.map(o => {
                 const st = ST[o.status]||ST.Failed;
