@@ -2355,7 +2355,7 @@ function BossView({ onLogout }) {
 export default function App() {
   const [session, setSession] = useState(() => {
     try {
-      const saved = localStorage.getItem("kyne_session");
+      const saved = sessionStorage.getItem("kyne_session");
       return saved ? JSON.parse(saved) : null;
     } catch { return null; }
   });
@@ -2363,12 +2363,12 @@ export default function App() {
   function handleLogin(role, branch) {
     const s = { role, branch };
     setSession(s);
-    try { localStorage.setItem("kyne_session", JSON.stringify(s)); } catch {}
+    try { sessionStorage.setItem("kyne_session", JSON.stringify(s)); } catch {}
   }
 
   function handleLogout() {
     setSession(null);
-    try { localStorage.removeItem("kyne_session"); } catch {}
+    try { sessionStorage.removeItem("kyne_session"); } catch {}
   }
 
   if (!session) return <LoginScreen onLogin={handleLogin}/>;
