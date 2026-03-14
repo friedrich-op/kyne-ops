@@ -153,14 +153,22 @@ async function sheetGet(tab) {
       price:          Number(row.price)          || 0,
       totalPrice:     Number(row.totalPrice)      || 0,
       riderRemitted:  row.riderRemitted === "true" || row.riderRemitted === true,
-      // RiderPayments fields
+      // RiderPayments fields — recalculate outstanding/cleared from actual numbers
       cash:           Number(row.cash)            || 0,
       pos:            Number(row.pos)             || 0,
-      outstanding:    Number(row.outstanding)     || 0,
-      cleared:        row.cleared === "true" || row.cleared === true,
       netExpected:    Number(row.netExpected)     || 0,
       totalExpected:  Number(row.totalExpected)   || 0,
       roadExp:        Number(row.roadExp)         || 0,
+      get outstanding() {
+        const net = Number(row.netExpected) || 0;
+        const paid = (Number(row.cash) || 0) + (Number(row.pos) || 0);
+        return net > 0 ? Math.max(0, net - paid) : 0;
+      },
+      get cleared() {
+        const net = Number(row.netExpected) || 0;
+        const paid = (Number(row.cash) || 0) + (Number(row.pos) || 0);
+        return net > 0 && paid >= net;
+      },
       products: (() => {
         if (!row.products) return [];
         if (typeof row.products === "string" && row.products.startsWith("[")) {
