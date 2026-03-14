@@ -1433,20 +1433,30 @@ function ManagerView({ branch, onLogout }) {
 
                     {/* Input cash + POS (only if not cleared) */}
                     {!cleared && (
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: "8px", alignItems: "end" }}>
-                        <div>
-                          <label className="k-label">Cash Received (₦)</label>
-                          <input type="number" className="k-input" placeholder="0" value={pi.cash || ""}
-                            onChange={e => setPayInput(p => ({ ...p, [key]: { ...pi, cash: e.target.value } }))} />
+                      <div>
+                        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"8px", marginBottom:"8px" }}>
+                          <div>
+                            <label className="k-label">Cash Received (₦)</label>
+                            <input type="number" className="k-input" placeholder="0" value={pi.cash || ""}
+                              onChange={e => setPayInput(p => ({ ...p, [key]: { ...pi, cash: e.target.value } }))} />
+                            {pi.cash > 0 && <p style={{ fontSize:"13px", fontWeight:700, color:"var(--blue)", marginTop:"4px", fontFamily:"var(--display)" }}>= {fmt(Number(pi.cash))}</p>}
+                          </div>
+                          <div>
+                            <label className="k-label">POS Received (₦)</label>
+                            <input type="number" className="k-input" placeholder="0" value={pi.pos || ""}
+                              onChange={e => setPayInput(p => ({ ...p, [key]: { ...pi, pos: e.target.value } }))} />
+                            {pi.pos > 0 && <p style={{ fontSize:"13px", fontWeight:700, color:"var(--blue)", marginTop:"4px", fontFamily:"var(--display)" }}>= {fmt(Number(pi.pos))}</p>}
+                          </div>
                         </div>
-                        <div>
-                          <label className="k-label">POS Received (₦)</label>
-                          <input type="number" className="k-input" placeholder="0" value={pi.pos || ""}
-                            onChange={e => setPayInput(p => ({ ...p, [key]: { ...pi, pos: e.target.value } }))} />
-                        </div>
+                        {(Number(pi.cash) > 0 || Number(pi.pos) > 0) && (
+                          <div style={{ background:"var(--blue-pale)", border:"1.5px solid var(--blue-pale2)", borderRadius:"var(--r-sm)", padding:"8px 12px", marginBottom:"8px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                            <span style={{ fontSize:"12px", color:"var(--text-dim)", fontWeight:600 }}>Total entering</span>
+                            <span style={{ fontFamily:"var(--display)", fontSize:"15px", fontWeight:800, color:"var(--blue)" }}>{fmt((Number(pi.cash)||0)+(Number(pi.pos)||0))}</span>
+                          </div>
+                        )}
                         <button onClick={() => saveRiderPayment(rider, date)}
                           disabled={!pi.cash && !pi.pos}
-                          style={{ padding: "9px 14px", background: !pi.cash && !pi.pos ? "#f1f5f9" : "var(--blue)", border: "none", borderRadius: "var(--r-sm)", color: !pi.cash && !pi.pos ? "#94a3b8" : "#fff", fontFamily: "var(--display)", fontSize: "12px", fontWeight: 700, cursor: !pi.cash && !pi.pos ? "not-allowed" : "pointer", whiteSpace: "nowrap" }}>
+                          style={{ width:"100%", padding:"9px", background:!pi.cash&&!pi.pos?"#f1f5f9":"var(--blue)", border:"none", borderRadius:"var(--r-sm)", color:!pi.cash&&!pi.pos?"#94a3b8":"#fff", fontFamily:"var(--display)", fontSize:"12px", fontWeight:700, cursor:!pi.cash&&!pi.pos?"not-allowed":"pointer" }}>
                           Confirm
                         </button>
                       </div>
