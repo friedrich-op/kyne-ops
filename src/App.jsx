@@ -2353,9 +2353,26 @@ function BossView({ onLogout }) {
 
 // ─── ROOT ─────────────────────────────────────────────────────────────────────
 export default function App() {
-  const [session, setSession] = useState(null);
-  if (!session) return <LoginScreen onLogin={(role, branch) => setSession({ role, branch })}/>;
-  if (session.role === "boss")          return <BossView         onLogout={() => setSession(null)}/>;
-  if (session.role === "manager")       return <ManagerView      branch={session.branch} onLogout={() => setSession(null)}/>;
-  if (session.role === "rider-manager") return <RiderManagerView branch={session.branch} onLogout={() => setSession(null)}/>;
+  const [session, setSession] = useState(() => {
+    try {
+      const saved = localStorage.getItem("kyne_session");
+      return saved ? JSON.parse(saved) : null;
+    } catch { return null; }
+  });
+
+  function handleLogin(role, branch) {
+    const s = { role, branch };
+    setSession(s);
+    try { localStorage.setItem("kyne_session", JSON.stringify(s)); } catch {}
+  }
+
+  function handleLogout() {
+    setSession(null);
+    try { localStorage.removeItem("kyne_session"); } catch {}
+  }
+
+  if (!session) return <LoginScreen onLogin={handleLogin}/>;
+  if (session.role === "boss")          return <BossView         onLogout={handleLogout}/>;
+  if (session.role === "manager")       return <ManagerView      branch={session.branch} onLogout={handleLogout}/>;
+  if (session.role === "rider-manager") return <RiderManagerView branch={session.branch} onLogout={handleLogout}/>;
 }
