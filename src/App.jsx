@@ -741,7 +741,7 @@ function RiderManagerView({ branch, onLogout }) {
       branch,
       status: "Pending",
       products: form.products.map(p => ({ ...p, qty: Number(p.qty) || 1, price: Number(p.price) || 0 })),
-      totalPrice: form.products.reduce((s, p) => s + (Number(p.price) || 0) * (Number(p.qty) || 1), 0),
+      totalPrice: form.products.reduce((s, p) => s + (Number(p.price) || 0), 0),
       riderRemitted: false,
     };
     setOrders(p => [newOrder, ...p]);
@@ -756,7 +756,7 @@ function RiderManagerView({ branch, onLogout }) {
     if (!order) return;
     // Parse products if string
     const products = typeof order.products === "string" ? JSON.parse(order.products) : (order.products || []);
-    const totalPrice = products.reduce((s, p) => s + (Number(p.price) || 0) * (Number(p.qty) || 1), 0);
+    const totalPrice = products.reduce((s, p) => s + (Number(p.price) || 0), 0);
     setEditingId(id);
     setEditForm({ ...order, products, totalPrice, roadExpense: "", expenseNote: "" });
   }
@@ -764,7 +764,7 @@ function RiderManagerView({ branch, onLogout }) {
   function submitDelivered() {
     if (!editForm) return;
     const products  = editForm.products.map(p => ({ ...p, qty: Number(p.qty) || 1, price: Number(p.price) || 0 }));
-    const totalPrice = products.reduce((s, p) => s + p.price * p.qty, 0);
+    const totalPrice = products.reduce((s, p) => s + Number(p.price) || 0, 0);
     const updated   = { ...editForm, products, totalPrice, status: "Delivered" };
     setOrders(p => p.map(o => String(o.id) === String(editForm.id) ? updated : o));
     // Save road expense if entered
@@ -899,7 +899,7 @@ function RiderManagerView({ branch, onLogout }) {
                 <div style={{ background: "var(--blue-pale)", border: "1.5px solid var(--blue-pale2)", borderRadius: "var(--r-sm)", padding: "10px 14px", marginBottom: "16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-dim)" }}>Total Order Value</span>
                   <span style={{ fontFamily: "var(--display)", fontSize: "16px", fontWeight: 800, color: "var(--blue)" }}>
-                    {fmt(form.products.reduce((s, p) => s + (Number(p.price) || 0) * (Number(p.qty) || 1), 0))}
+                    {fmt(form.products.reduce((s, p) => s + (Number(p.price) || 0), 0))}
                   </span>
                 </div>
               )}
@@ -1015,7 +1015,7 @@ function RiderManagerView({ branch, onLogout }) {
                   <div style={{ background: "var(--blue-pale)", border: "1.5px solid var(--blue-pale2)", borderRadius: "var(--r-sm)", padding: "10px 14px", marginBottom: "14px", display: "flex", justifyContent: "space-between" }}>
                     <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-dim)" }}>Total</span>
                     <span style={{ fontFamily: "var(--display)", fontSize: "14px", fontWeight: 800, color: "var(--blue)" }}>
-                      {fmt(editForm.products.reduce((s, p) => s + (Number(p.price) || 0) * (Number(p.qty) || 1), 0))}
+                      {fmt(editForm.products.reduce((s, p) => s + (Number(p.price) || 0), 0))}
                     </span>
                   </div>
 
@@ -1040,12 +1040,12 @@ function RiderManagerView({ branch, onLogout }) {
                           <p style={{ fontSize: "11px", color: "var(--text-faint)", marginTop: "2px" }}>{o.address} · {o.rider} · {o.date}</p>
                           <div style={{ marginTop: "6px" }}>
                             {getProducts(o).map((p, i) => (
-                              <span key={i} style={{ fontSize: "11px", color: "var(--text-dim)", marginRight: "10px" }}>🏷 {p.name} ×{p.qty} — {fmt(p.price * p.qty)}</span>
+                              <span key={i} style={{ fontSize: "11px", color: "var(--text-dim)", marginRight: "10px" }}>🏷 {p.name} ×{p.qty} — {fmt(Number(p.price) || 0)}</span>
                             ))}
                           </div>
                         </div>
                         <span style={{ fontFamily: "var(--display)", fontSize: "14px", fontWeight: 700, color: "var(--text)", marginLeft: "12px", flexShrink: 0 }}>
-                          {fmt(getProducts(o).reduce((s, p) => s + (Number(p.price) || 0) * (Number(p.qty) || 1), 0))}
+                          {fmt(getProducts(o).reduce((s, p) => s + (Number(p.price) || 0), 0))}
                         </span>
                       </div>
                       <div style={{ display: "flex", gap: "8px", paddingTop: "8px", borderTop: "1px solid var(--border)" }}>
@@ -1071,12 +1071,12 @@ function RiderManagerView({ branch, onLogout }) {
                           <p style={{ fontSize: "11px", color: "var(--text-faint)", marginTop: "2px" }}>{o.address} · {o.rider} · {o.date}</p>
                           <div style={{ marginTop: "6px" }}>
                             {getProducts(o).map((p, i) => (
-                              <span key={i} style={{ fontSize: "11px", color: "var(--text-dim)", marginRight: "10px" }}>🏷 {p.name} ×{p.qty} — {fmt(p.price * p.qty)}</span>
+                              <span key={i} style={{ fontSize: "11px", color: "var(--text-dim)", marginRight: "10px" }}>🏷 {p.name} ×{p.qty} — {fmt(Number(p.price) || 0)}</span>
                             ))}
                           </div>
                         </div>
                         <span style={{ fontFamily: "var(--display)", fontSize: "14px", fontWeight: 700, color: "var(--green)", marginLeft: "12px", flexShrink: 0 }}>
-                          {fmt(getProducts(o).reduce((s, p) => s + (Number(p.price) || 0) * (Number(p.qty) || 1), 0))}
+                          {fmt(getProducts(o).reduce((s, p) => s + (Number(p.price) || 0), 0))}
                         </span>
                       </div>
                     </div>
@@ -1121,7 +1121,7 @@ function RiderManagerView({ branch, onLogout }) {
             <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
               {RIDERS[branch].map(name => {
                 const rOrders = filterByPeriod(orders.filter(o => o.rider === name && o.status === "Delivered"), mode, customDate);
-                const totalValue = rOrders.reduce((s, o) => s + (getProducts(o).reduce((ss, p) => ss + (Number(p.price) || 0) * (Number(p.qty) || 1), 0)), 0);
+                const totalValue = rOrders.reduce((s, o) => s + (getProducts(o).reduce((ss, p) => ss + (Number(p.price) || 0), 0)), 0);
                 const totalQty   = rOrders.reduce((s, o) => s + getProducts(o).reduce((ss, p) => ss + (Number(p.qty) || 1), 0), 0);
                 const reKey      = `${name}-${TODAY}`;
                 const roadExp    = roadExpenses[reKey]?.amount || 0;
@@ -1164,7 +1164,7 @@ function RiderManagerView({ branch, onLogout }) {
 // ─── MINI ORDER CARD ──────────────────────────────────────────────────────────
 function MiniOrderCard({ order, getProducts }) {
   const products = getProducts(order);
-  const total    = products.reduce((s, p) => s + (Number(p.price) || 0) * (Number(p.qty) || 1), 0);
+  const total    = products.reduce((s, p) => s + (Number(p.price) || 0), 0);
   return (
     <div style={{ background: "#fff", border: "1.5px solid var(--border)", borderRadius: "var(--r)", padding: "10px 14px", boxShadow: "var(--shadow)" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
@@ -1234,7 +1234,7 @@ function ManagerView({ branch, onLogout }) {
     return order.products;
   }
   function orderTotal(order) {
-    return getProducts(order).reduce((s, p) => s + (Number(p.price) || 0) * (Number(p.qty) || 1), 0);
+    return getProducts(order).reduce((s, p) => s + (Number(p.price) || 0), 0);
   }
   function getRoadExp(rider, date) {
     return roadExpenses.find(r => r.rider === rider && r.date === date)?.amount || 0;
@@ -1248,27 +1248,31 @@ function ManagerView({ branch, onLogout }) {
     const pos  = Number(pi.pos)  || 0;
     if (!cash && !pos) return;
 
-    const riderOrders  = orders.filter(o => o.rider === rider && o.date === date);
+    const riderOrders   = orders.filter(o => o.rider === rider && o.date === date);
     const totalExpected = riderOrders.reduce((s, o) => s + orderTotal(o), 0);
     const roadExp       = getRoadExp(rider, date);
     const netExpected   = Math.max(0, totalExpected - roadExp);
-    const totalPaid     = cash + pos;
-    const outstanding   = Math.max(0, netExpected - totalPaid);
-    const cleared       = outstanding === 0;
 
-    const existing = riderPayments[key];
+    const existing    = riderPayments[key];
+    const totalCash   = (existing?.cash || 0) + cash;
+    const totalPOS    = (existing?.pos  || 0) + pos;
+    const totalPaid   = totalCash + totalPOS;
+    // Only mark cleared if netExpected > 0 AND fully paid
+    const outstanding = netExpected > 0 ? Math.max(0, netExpected - totalPaid) : 0;
+    const cleared     = netExpected > 0 && outstanding === 0;
+
     const rec = {
-      id:          existing?.id || Date.now(),
+      id:           existing?.id || Date.now(),
       branch,
       rider,
       date,
-      cash:        (existing?.cash || 0) + cash,
-      pos:         (existing?.pos  || 0) + pos,
+      cash:         totalCash,
+      pos:          totalPOS,
       totalExpected,
       roadExp,
       netExpected,
-      outstanding: Math.max(0, netExpected - (existing?.cash || 0) - cash - (existing?.pos || 0) - pos),
-      cleared:     Math.max(0, netExpected - (existing?.cash || 0) - cash - (existing?.pos || 0) - pos) === 0,
+      outstanding,
+      cleared,
     };
 
     setRiderPayments(p => ({ ...p, [key]: rec }));
@@ -1715,7 +1719,7 @@ function ManagerView({ branch, onLogout }) {
                   if (!name) return;
                   if (!productMap[name]) productMap[name]={qty:0,value:0,orders:0};
                   productMap[name].qty    += Number(p.qty)||1;
-                  productMap[name].value  += (Number(p.price)||0)*(Number(p.qty)||1);
+                  productMap[name].value  += (Number(p.price)||0);
                   productMap[name].orders += 1;
                 });
               });
@@ -1940,7 +1944,7 @@ function BossView({ onLogout }) {
     if (order.totalPrice) return Number(order.totalPrice) || 0;
     if (order.products) {
       const prods = typeof order.products === "string" ? (() => { try { return JSON.parse(order.products); } catch { return []; } })() : order.products;
-      return prods.reduce((s,p) => s + (Number(p.price)||0)*(Number(p.qty)||1), 0);
+      return prods.reduce((s,p) => s + (Number(p.price)||0), 0);
     }
     return 0;
   }
