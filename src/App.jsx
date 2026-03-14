@@ -96,6 +96,19 @@ const VENDORS = {
   "CEENO LAGOS": ["Nano tapes","Turmeric soaps","Pink lip serum","Shilajit gummies","Brown flower wallpaper","Green flower wallpaper","IMAX SPRAY","Boka toothpaste","Lunavia pen","Fenugreek seed tea"],
   "ISYLIFE": ["Richard mille","Cctv","INVICTA","Lamborghini","Smart watch","Daniel Wellington"],
   "GLAMOUR TROVE": ["Kids multivitamin"],
+  "SENDJON": ["Renewal face cream","Repair Scar cream","Body cream","Acne Serum","Eye cream","Advanced Daily SAAM","Facial cleanser","Micellar water","Cotton pad","Eyebrow","Primeman potency"],
+  "Zavina Group": ["Zavina tea","Veritol cap","Vetra tea"],
+  "SEFWAY Group": ["Sefway Herbal"],
+  "Awoof Mall": ["Wireless Mic"],
+  "BMP Group": ["Lenstone Herbal"],
+  "NUTRICARE": ["Beyond the like","Not just a girl","Stroke fighter"],
+  "MIRAC GLOBAL": ["Liver restore","Sperm revive capsule","Infection flusher","Hepafix"],
+  "ADEITAN NETFAIR": ["Cucumber oil","Liver restore","Liver cur","Asthmacur","Lung cleanser","Infection flusher","Infection crusher","Ivision capsule","Eye cleanser tea","Detox tea","Ovucare tea","Fertility plus","Sleep cur","Knacker boost","Knacker capsule","Firm fix","Cemenplus","Sperm revive","Alpha man capsule","Alpha man syrup"],
+  "HYPERFIT": ["Egg cracker","Pepper spray","Combat pouch"],
+  "OPTIMAL HORIZON": ["Natural erect","Strike hard"],
+  "29 carat": ["OLEVS wristwatch"],
+  "EDDY": ["Soursop","Sealant spray","Mosquito swatter","Aloe vera gel","Sleep mask"],
+  "LAGOS BATCH AFROMEDIA": ["Erabab capsule","Hamachin tea","Hamachin capsule"],
 };
 const VENDOR_NAMES = Object.keys(VENDORS);
 
