@@ -153,6 +153,14 @@ async function sheetGet(tab) {
       price:          Number(row.price)          || 0,
       totalPrice:     Number(row.totalPrice)      || 0,
       riderRemitted:  row.riderRemitted === "true" || row.riderRemitted === true,
+      // RiderPayments fields
+      cash:           Number(row.cash)            || 0,
+      pos:            Number(row.pos)             || 0,
+      outstanding:    Number(row.outstanding)     || 0,
+      cleared:        row.cleared === "true" || row.cleared === true,
+      netExpected:    Number(row.netExpected)     || 0,
+      totalExpected:  Number(row.totalExpected)   || 0,
+      roadExp:        Number(row.roadExp)         || 0,
       products: (() => {
         if (!row.products) return [];
         if (typeof row.products === "string" && row.products.startsWith("[")) {
@@ -1989,78 +1997,111 @@ function BossView({ onLogout }) {
 
         {tab==="overview" && (
           <div className="fade-in">
-            <SectionTitle title="All Branches Overview"/>
+            <SectionTitle title="Overview"/>
             <PeriodFilter mode={mode} setMode={setMode} customDate={customDate} setCustomDate={setCustomDate} customDateEnd={customDateEnd} setCustomDateEnd={setCustomDateEnd}/>
-            {branchStats.filter(b=>Math.abs(b.diff)>0).map(b=>(
-              <div key={b.branch} className={b.diff<0?"pulse-anim":""} style={{
-                background:b.diff<0?"#fef2f2":"#fffbeb",
-                border:`1.5px solid ${b.diff<0?"#fecaca":"#fde68a"}`,
-                borderRadius:"var(--r)", padding:"12px 16px", marginBottom:"8px",
-                display:"flex", alignItems:"center", gap:"12px" }}>
-                <span style={{ fontSize:"18px" }}>{b.diff<0?"🚨":"⚠️"}</span>
-                <div>
-                  <p style={{ fontSize:"13px", fontWeight:600, color:b.diff<0?"var(--red)":"var(--amber)" }}>
-                    {b.branch}: {b.diff<0?`Short ${fmt(Math.abs(b.diff))}`:`Over by ${fmt(b.diff)}`}
-                  </p>
-                  <p style={{ fontSize:"11px", color:b.diff<0?"#f87171":"#fbbf24", marginTop:"2px" }}>
-                    Expected: {fmt(b.expected)} · Received: {fmt(b.totalSent)}
-                  </p>
-                </div>
-              </div>
-            ))}
-            {Math.abs(grandDiff)<1 && grand.sent>0 && (
-              <div style={{ background:"#ecfdf5", border:"1.5px solid #a7f3d0", borderRadius:"var(--r)",
-                padding:"12px 16px", marginBottom:"16px", display:"flex", alignItems:"center", gap:"10px" }}>
-                <span style={{ color:"var(--green)", fontSize:"18px" }}>✓</span>
-                <p style={{ fontSize:"12px", fontWeight:600, color:"var(--green)" }}>All branches balanced — {fmt(grand.sent)} received as expected</p>
-              </div>
-            )}
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:"10px", marginBottom:"10px" }}>
-              <StatCard label="Total Order Value" value={fmt(grand.totalVal)}      accent="blue"/>
-              <StatCard label="Cash Collected"    value={fmt(grand.cashCollected)}  accent="blue"/>
-              <StatCard label="POS Collected"     value={fmt(grand.posCollected)}   accent="green"/>
-              <StatCard label="Branch Expenses"   value={fmt(grand.exp)}            accent="red"/>
-            </div>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:"10px", marginBottom:"16px" }}>
-              <StatCard label="Net Cash Expected" value={fmt(grand.expected)}/>
-              <StatCard label="Cash Received"     value={fmt(grand.sent)}       accent={grandDiff>=0?"green":"red"}/>
-              <StatCard label="Still to Send"     value={fmt(grand.remaining)}  accent={grand.remaining>0?"amber":"green"}/>
-              <StatCard label="Outstanding"       value={fmt(grand.outstanding)} accent="red"/>
-            </div>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:"10px", marginBottom:"16px" }}>
-              <StatCard label="Total Bonus Due" value={fmt(grand.bonus)} accent="blue" sub={period.label}/>
-              <StatCard label="Total Orders"    value={grand.orders}/>
-            </div>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:"10px" }}>
-              {branchStats.map(b => (
-                <Card key={b.branch}>
-                  <div style={{ display:"flex", alignItems:"center", gap:"8px", marginBottom:"10px" }}>
-                    <div style={{ width:"30px", height:"30px", borderRadius:"8px", background:"#eff4ff",
-                      border:"1.5px solid #bfdbfe", display:"flex", alignItems:"center", justifyContent:"center",
-                      fontFamily:"var(--display)", fontSize:"12px", fontWeight:800, color:"var(--blue)" }}>{b.branch[0]}</div>
-                    <span style={{ fontFamily:"var(--display)", fontSize:"13px", fontWeight:700 }}>{b.branch}</span>
-                  </div>
-                  <p style={{ fontFamily:"var(--display)", fontSize:"18px", fontWeight:800, color:"var(--blue)", marginBottom:"2px" }}>{fmt(b.totalVal)}</p>
-                  <p style={{ fontSize:"11px", color:"var(--text-faint)", marginBottom:"6px" }}>{b.delivered}/{b.total} delivered</p>
-                  <div style={{ display:"flex", gap:"6px", flexWrap:"wrap", marginBottom:"6px" }}>
-                    {b.cashRemaining > 0
-                      ? <Tag label={`Still owes ${fmt(b.cashRemaining)}`} type="red"/>
-                      : b.totalSent > 0 ? <Tag label="✓ Sent" type="green"/> : null}
-                    {b.totalOutstanding > 0 && <Tag label={`Rider owes ${fmt(b.totalOutstanding)}`} type="amber"/>}
-                  </div>
-                  {b.branchPayments.length > 0 && (
-                    <div style={{ marginTop:"10px", paddingTop:"8px", borderTop:"1px solid var(--border)" }}>
-                      <p style={{ fontSize:"9px", fontWeight:600, color:"var(--red)", textTransform:"uppercase", letterSpacing:".06em", marginBottom:"6px" }}>Outstanding Riders</p>
-                      {b.branchPayments.map(rp => (
-                        <div key={rp.id||rp.rider} style={{ display:"flex", justifyContent:"space-between", marginBottom:"3px" }}>
-                          <span style={{ fontSize:"11px", color:"var(--text-dim)" }}>{rp.rider}</span>
-                          <span style={{ fontSize:"11px", fontWeight:600, color:"var(--red)" }}>{fmt(rp.outstanding)}</span>
-                        </div>
-                      ))}
+
+            {/* ── SECTION 1: REMITTANCE STATUS PER BRANCH ── */}
+            <p style={{fontSize:"10px",fontWeight:700,color:"var(--text-faint)",textTransform:"uppercase",letterSpacing:".08em",marginBottom:"8px"}}>Remittance Status</p>
+            <div style={{display:"flex",flexDirection:"column",gap:"8px",marginBottom:"20px"}}>
+              {branchStats.map(b => {
+                const allSent   = b.cashRemaining <= 0 && b.totalSent > 0;
+                const noneSent  = b.totalSent === 0 && b.expected > 0;
+                const partial   = b.totalSent > 0 && b.cashRemaining > 0;
+                const noOrders  = b.expected === 0 && b.totalSent === 0;
+                return (
+                  <div key={b.branch} style={{
+                    background: allSent?"#ecfdf5":noneSent?"#fef2f2":partial?"#fffbeb":"#fff",
+                    border:`1.5px solid ${allSent?"#a7f3d0":noneSent?"#fecaca":partial?"#fde68a":"var(--border)"}`,
+                    borderRadius:"var(--r)", padding:"14px 16px", display:"flex", alignItems:"center", justifyContent:"space-between"
+                  }}>
+                    <div style={{display:"flex",alignItems:"center",gap:"12px"}}>
+                      <div style={{width:"36px",height:"36px",borderRadius:"10px",
+                        background:allSent?"#dcfce7":noneSent?"#fee2e2":partial?"#fef9c3":"#eff4ff",
+                        display:"flex",alignItems:"center",justifyContent:"center",
+                        fontFamily:"var(--display)",fontSize:"14px",fontWeight:800,
+                        color:allSent?"var(--green)":noneSent?"var(--red)":partial?"var(--amber)":"var(--blue)"}}>
+                        {b.branch[0]}
+                      </div>
+                      <div>
+                        <p style={{fontFamily:"var(--display)",fontSize:"14px",fontWeight:700,marginBottom:"2px"}}>{b.branch}</p>
+                        <p style={{fontSize:"11px",color:"var(--text-faint)"}}>
+                          {b.delivered} order{b.delivered!==1?"s":""} · {fmt(b.totalVal)} collected
+                        </p>
+                      </div>
                     </div>
-                  )}
-                </Card>
-              ))}
+                    <div style={{textAlign:"right"}}>
+                      {allSent && <p style={{fontFamily:"var(--display)",fontSize:"13px",fontWeight:700,color:"var(--green)"}}>✓ All Sent</p>}
+                      {noneSent && <p style={{fontFamily:"var(--display)",fontSize:"13px",fontWeight:700,color:"var(--red)"}}>⚠ Not Sent</p>}
+                      {partial && <p style={{fontFamily:"var(--display)",fontSize:"13px",fontWeight:700,color:"var(--amber)"}}>Partial</p>}
+                      {noOrders && <p style={{fontSize:"12px",color:"var(--text-faint)"}}>No orders</p>}
+                      {(noneSent||partial) && b.expected>0 && (
+                        <p style={{fontSize:"11px",color:"var(--text-faint)",marginTop:"2px"}}>
+                          {partial?`${fmt(b.cashRemaining)} remaining`:`${fmt(b.expected)} expected`}
+                        </p>
+                      )}
+                      {allSent && <p style={{fontSize:"11px",color:"var(--text-faint)",marginTop:"2px"}}>{fmt(b.totalSent)} sent</p>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* ── SECTION 2: TOTALS SUMMARY ── */}
+            <p style={{fontSize:"10px",fontWeight:700,color:"var(--text-faint)",textTransform:"uppercase",letterSpacing:".08em",marginBottom:"8px"}}>Today's Totals</p>
+            <div style={{background:"var(--navy)",borderRadius:"var(--r)",padding:"16px",marginBottom:"20px"}}>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px",marginBottom:"10px"}}>
+                {[
+                  ["Orders Value",   fmt(grand.totalVal),      "#fff"],
+                  ["Cash Collected", fmt(grand.cashCollected),  "#93c5fd"],
+                  ["POS Collected",  fmt(grand.posCollected),   "#6ee7b7"],
+                  ["Branch Expenses",fmt(grand.exp),            "#fca5a5"],
+                ].map(([label,val,color])=>(
+                  <div key={label} style={{background:"rgba(255,255,255,.07)",borderRadius:"var(--r-sm)",padding:"10px 12px"}}>
+                    <p style={{fontSize:"10px",fontWeight:600,color:"rgba(255,255,255,.45)",textTransform:"uppercase",letterSpacing:".06em",marginBottom:"4px"}}>{label}</p>
+                    <p style={{fontFamily:"var(--display)",fontSize:"16px",fontWeight:800,color}}>{val}</p>
+                  </div>
+                ))}
+              </div>
+              <div style={{height:"1px",background:"rgba(255,255,255,.1)",margin:"0 0 10px"}}/>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"10px"}}>
+                {[
+                  ["Net Expected",  fmt(grand.expected),  "#fff"],
+                  ["Cash Sent",     fmt(grand.sent),       grand.remaining<=0&&grand.sent>0?"#34d399":"#93c5fd"],
+                  ["Still to Send", fmt(grand.remaining),  grand.remaining>0?"#fbbf24":"#34d399"],
+                ].map(([label,val,color])=>(
+                  <div key={label} style={{textAlign:"center"}}>
+                    <p style={{fontSize:"9px",fontWeight:600,color:"rgba(255,255,255,.4)",textTransform:"uppercase",letterSpacing:".06em",marginBottom:"3px"}}>{label}</p>
+                    <p style={{fontFamily:"var(--display)",fontSize:"15px",fontWeight:800,color}}>{val}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* ── SECTION 3: OUTSTANDING RIDERS ── */}
+            {branchStats.some(b=>b.branchPayments.length>0) && (
+              <>
+                <p style={{fontSize:"10px",fontWeight:700,color:"var(--text-faint)",textTransform:"uppercase",letterSpacing:".08em",marginBottom:"8px"}}>Outstanding Riders</p>
+                <div style={{display:"flex",flexDirection:"column",gap:"6px",marginBottom:"20px"}}>
+                  {branchStats.filter(b=>b.branchPayments.length>0).map(b=>(
+                    b.branchPayments.map(rp=>(
+                      <div key={rp.id||rp.rider} style={{background:"#fef2f2",border:"1.5px solid #fecaca",borderRadius:"var(--r-sm)",padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                        <div>
+                          <p style={{fontSize:"13px",fontWeight:600}}>{rp.rider}</p>
+                          <p style={{fontSize:"11px",color:"var(--text-faint)",marginTop:"1px"}}>{b.branch} · {rp.date}</p>
+                        </div>
+                        <p style={{fontFamily:"var(--display)",fontSize:"14px",fontWeight:800,color:"var(--red)"}}>{fmt(rp.outstanding)}</p>
+                      </div>
+                    ))
+                  ))}
+                </div>
+              </>
+            )}
+
+            {/* ── SECTION 4: QUICK STATS ── */}
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"10px"}}>
+              <StatCard label="Total Orders"    value={String(grand.orders)}/>
+              <StatCard label="Bonus Due"       value={fmt(grand.bonus)} accent="blue" sub={period.label}/>
+              <StatCard label="Outstanding"     value={fmt(grand.outstanding)} accent={grand.outstanding>0?"red":"green"}/>
             </div>
           </div>
         )}
