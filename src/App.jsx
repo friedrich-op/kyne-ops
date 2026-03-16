@@ -109,6 +109,7 @@ const VENDORS = {
   "29 carat": ["OLEVS wristwatch"],
   "EDDY": ["Soursop","Sealant spray","Mosquito swatter","Aloe vera gel","Sleep mask"],
   "LAGOS BATCH AFROMEDIA": ["Erabab capsule","Hamachin tea","Hamachin capsule"],
+  "DR MIKE": ["Sureza capsule","Fayamax cleanser","Fayamax capsule","Fayamax oil","Hyperform capsule","Hyperform tea"],
 };
 const VENDOR_NAMES = Object.keys(VENDORS);
 
