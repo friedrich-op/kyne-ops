@@ -131,23 +131,33 @@ function calcOutstanding(order) {
 // ─── GOOGLE SHEETS ────────────────────────────────────────────────────────────
 const API_URL = "https://script.google.com/macros/s/AKfycbx0n97CWtI-uRQ_k58uuN2c8TBCd8xl37z-sxtcDz2agi0IzfI2-r7k9dpg6NP7KDYL/exec";
 
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes cache
 async function sheetGet(tab) {
+  // Try cache first — show instantly, then refresh in background
+  try {
+    const cacheKey = `kyne_cache_${tab}`;
+    const cached = sessionStorage.getItem(cacheKey);
+    if (cached) {
+      const { data, ts } = JSON.parse(cached);
+      if (Date.now() - ts < CACHE_TTL) return parseSheetRows(data);
+    }
+  } catch {}
   try {
     const res = await fetch(`${API_URL}?tab=${tab}`);
     const data = await res.json();
-    return data.map(row => ({
+    try { sessionStorage.setItem(`kyne_cache_${tab}`, JSON.stringify({ data, ts: Date.now() })); } catch {}
+    return parseSheetRows(data);
+  } catch { return []; }
+}
+
+function parseSheetRows(data) {
+  return data.map(row => ({
       ...row,
-      // Strip timestamps and correct date shifting
-      // Sheets sometimes returns "2026-03-04T23:00:00.000Z" for a date saved as "2026-03-05"
-      // We take only the date part and never parse it through Date() to avoid UTC shifting
       date: (() => {
         if (!row.date) return "";
         const s = String(row.date);
-        // If it has a T, take only the date part before T
         if (s.includes("T")) return s.split("T")[0];
-        // If it looks like a serial number (Google Sheets date serial), convert it
         if (/^\d+(\.\d+)?$/.test(s)) {
-          // Google Sheets serial: days since Dec 30, 1899
           const serial = parseFloat(s);
           const ms = (serial - 25569) * 86400 * 1000;
           const d  = new Date(ms);
@@ -191,7 +201,6 @@ async function sheetGet(tab) {
         return [];
       })(),
     }));
-  } catch { return []; }
 }
 async function sheetAdd(tab, data) {
   try {
@@ -446,7 +455,7 @@ function TopNav({ subtitle, tabs, activeTab, setActiveTab, onLogout, syncing }) 
       {syncing && (
         <div style={{ background:"rgba(96,165,250,.18)", padding:"4px", textAlign:"center",
           fontSize:"10px", fontWeight:600, color:"#93c5fd", letterSpacing:".08em" }}>
-          ⟳ SYNCING WITH SHEETS...
+          ⟳ SYNCING...
         </div>
       )}
       <div style={{ maxWidth:"960px", margin:"0 auto", padding:"0 16px", height:"48px",
@@ -732,7 +741,7 @@ function RiderManagerView({ branch, onLogout }) {
   const [roadSaved, setRoadSaved] = useState(false);
 
   useEffect(() => {
-    setSyncing(true);
+    // Load instantly from cache, then refresh in background
     Promise.all([sheetGet("Orders"), sheetGet("RoadExpenses")])
       .then(([o, r]) => {
         setOrders(o.filter(x => x.branch === branch));
@@ -2405,62 +2414,112 @@ function InventoryAdminView({ branch, onLogout }) {
 
   function saveEntry(type, form, resetForm) {
     if (!form.vendor || !form.product || !form.qty) return;
-    const rec = { id: Date.now(), type, branch: form.fromBranch || "IDIMU", ...form, qty: Number(form.qty) || 0 };
+    const fromBranch = form.fromBranch || "IDIMU";
+    const toBranch   = form.toBranch || "";
+    const qty        = Number(form.qty) || 0;
+    // Build record cleanly — branch = where it originates
+    const rec = {
+      id: Date.now(), type,
+      branch: fromBranch,
+      date: form.date || TODAY,
+      vendor: form.vendor,
+      product: form.product,
+      qty,
+      note: form.note || "",
+      fromBranch,
+      toBranch,
+    };
     setInventory(p => [rec, ...p]);
     resetForm();
     setSaved(type); setTimeout(() => setSaved(""), 3000);
     sheetAdd("Inventory", rec).catch(() => {});
-    // If transfer, also add receiving record for target branch
-    if (type === "transfer-out") {
-      const recIn = { ...rec, id: Date.now() + 1, type: "transfer-in", branch: form.toBranch };
+    // For transfers, also save a transfer-in record for the receiving branch
+    if (type === "transfer-out" && toBranch) {
+      const recIn = {
+        ...rec,
+        id: Date.now() + 1,
+        type: "transfer-in",
+        branch: toBranch,
+        fromBranch,
+        toBranch,
+      };
       setInventory(p => [recIn, ...p]);
       sheetAdd("Inventory", recIn).catch(() => {});
     }
   }
 
-  // Build stock map for a given branch
-  function buildStockMap(targetBranch) {
+  // Build stock map for a given branch with optional date filter
+  function buildStockMap(targetBranch, filteredInv, filteredOrds) {
+    const inv  = filteredInv  || inventory;
+    const ords = filteredOrds || allOrders;
     const vendorMap = {};
-    // Waybill in (received from vendor) — only for IDIMU
-    inventory.filter(i => i.branch === "IDIMU" && i.type === "waybill-in").forEach(i => {
-      const v = (i.vendor || "").trim(), n = (i.product || "").trim();
-      if (!v || !n) return;
+
+    function ensure(v, n) {
       if (!vendorMap[v]) vendorMap[v] = {};
-      if (!vendorMap[v][n]) vendorMap[v][n] = { received: 0, delivered: 0, returned: 0, transferredOut: 0, transferredIn: 0 };
-      if (targetBranch === "IDIMU") vendorMap[v][n].received += Number(i.qty) || 0;
+      if (!vendorMap[v][n]) vendorMap[v][n] = {
+        received: 0, delivered: 0, returnedTotal: 0,
+        transferredOut: 0, transferredIn: 0,
+        sentTo: {}, returnedFrom: {} // per-branch breakdown
+      };
+    }
+
+    // Waybill in
+    inv.filter(i => i.branch === "IDIMU" && i.type === "waybill-in").forEach(i => {
+      const v = (i.vendor||"").trim(), n = (i.product||"").trim();
+      if (!v||!n) return;
+      ensure(v, n);
+      if (targetBranch === "IDIMU") vendorMap[v][n].received += Number(i.qty)||0;
     });
-    // Waybill out (returned to vendor) — only IDIMU
-    inventory.filter(i => i.branch === "IDIMU" && i.type === "waybill-out").forEach(i => {
-      const v = (i.vendor || "").trim(), n = (i.product || "").trim();
-      if (!v || !n || !vendorMap[v]?.[n]) return;
-      if (targetBranch === "IDIMU") vendorMap[v][n].returned += Number(i.qty) || 0;
+
+    // Waybill out (returned to vendor) — track who returned
+    inv.filter(i => i.type === "waybill-out").forEach(i => {
+      const v=(i.vendor||"").trim(), n=(i.product||"").trim(), b=i.branch||"IDIMU";
+      if (!v||!n) return;
+      ensure(v, n);
+      if (targetBranch === b) {
+        vendorMap[v][n].returnedTotal += Number(i.qty)||0;
+        if (!vendorMap[v][n].returnedFrom[b]) vendorMap[v][n].returnedFrom[b] = 0;
+        vendorMap[v][n].returnedFrom[b] += Number(i.qty)||0;
+      }
     });
-    // Transfer out from IDIMU
-    inventory.filter(i => i.branch === "IDIMU" && i.type === "transfer-out").forEach(i => {
-      const v = (i.vendor || "").trim(), n = (i.product || "").trim();
-      if (!v || !n) return;
-      if (!vendorMap[v]) vendorMap[v] = {};
-      if (!vendorMap[v][n]) vendorMap[v][n] = { received: 0, delivered: 0, returned: 0, transferredOut: 0, transferredIn: 0 };
-      if (targetBranch === "IDIMU") vendorMap[v][n].transferredOut += Number(i.qty) || 0;
-      if (i.toBranch === targetBranch) vendorMap[v][n].transferredIn += Number(i.qty) || 0;
+
+    // Transfer out — track per destination branch
+    inv.filter(i => i.type === "transfer-out" && i.branch === i.fromBranch).forEach(i => {
+      const v=(i.vendor||"").trim(), n=(i.product||"").trim();
+      if (!v||!n) return;
+      ensure(v, n);
+      const from = i.fromBranch || i.branch;
+      const to   = i.toBranch || "";
+      if (targetBranch === from) {
+        vendorMap[v][n].transferredOut += Number(i.qty)||0;
+        if (to) {
+          if (!vendorMap[v][n].sentTo[to]) vendorMap[v][n].sentTo[to] = 0;
+          vendorMap[v][n].sentTo[to] += Number(i.qty)||0;
+        }
+      }
+      if (targetBranch === to) {
+        vendorMap[v][n].transferredIn += Number(i.qty)||0;
+      }
     });
-    // Transfer in to target branch
-    inventory.filter(i => i.branch === targetBranch && i.type === "transfer-in").forEach(i => {
-      const v = (i.vendor || "").trim(), n = (i.product || "").trim();
-      if (!v || !n) return;
-      if (!vendorMap[v]) vendorMap[v] = {};
-      if (!vendorMap[v][n]) vendorMap[v][n] = { received: 0, delivered: 0, returned: 0, transferredOut: 0, transferredIn: 0 };
-      vendorMap[v][n].transferredIn += Number(i.qty) || 0;
+
+    // Transfer in (also track from transfer-in records for receiving branches)
+    inv.filter(i => i.type === "transfer-in" && i.branch === targetBranch).forEach(i => {
+      const v=(i.vendor||"").trim(), n=(i.product||"").trim();
+      if (!v||!n) return;
+      ensure(v, n);
+      vendorMap[v][n].transferredIn += Number(i.qty)||0;
     });
-    // Deliveries subtract from stock
-    allOrders.filter(o => o.branch === targetBranch).forEach(o => {
-      const prods = typeof o.products === "string" ? (() => { try { return JSON.parse(o.products); } catch { return []; } })() : (o.products || []);
+
+    // Deliveries
+    ords.filter(o => o.branch === targetBranch).forEach(o => {
+      const prods = typeof o.products==="string"?(()=>{try{return JSON.parse(o.products);}catch{return [];}})():(o.products||[]);
       prods.forEach(p => {
-        const v = (p.vendor || "").trim(), n = (p.name || "").trim();
-        if (!v || !n || !vendorMap[v]?.[n]) return;
-        vendorMap[v][n].delivered += Number(p.qty) || 1;
+        const v=(p.vendor||"").trim(), n=(p.name||"").trim();
+        if (!v||!n||!vendorMap[v]?.[n]) return;
+        vendorMap[v][n].delivered += Number(p.qty)||1;
       });
     });
+
     return vendorMap;
   }
 
@@ -2482,9 +2541,12 @@ function InventoryAdminView({ branch, onLogout }) {
         {tab === "stock" && (
           <div className="fade-in">
             <SectionTitle title="Stock Overview — All Branches" />
+            <PeriodFilter mode={mode} setMode={setMode} customDate={customDate} setCustomDate={setCustomDate} customDateEnd={customDateEnd} setCustomDateEnd={setCustomDateEnd}/>
             <input className="k-input" placeholder="🔍 Search vendor or product..." value={search} onChange={e => setSearch(e.target.value)} style={{ marginBottom: "16px" }} />
             {BRANCHES.map(b => {
-              const vendorMap = buildStockMap(b);
+              const filteredInv  = filterByPeriod(inventory, mode, customDate, customDateEnd);
+              const filteredOrds = filterByPeriod(allOrders, mode, customDate, customDateEnd);
+              const vendorMap = buildStockMap(b, filteredInv, filteredOrds);
               const vendorList = Object.keys(vendorMap).filter(v =>
                 !search || v.toLowerCase().includes(search.toLowerCase()) ||
                 Object.keys(vendorMap[v]).some(p => p.toLowerCase().includes(search.toLowerCase()))
@@ -2501,7 +2563,7 @@ function InventoryAdminView({ branch, onLogout }) {
                       .filter(([name]) => !search || vendor.toLowerCase().includes(search.toLowerCase()) || name.toLowerCase().includes(search.toLowerCase()))
                       .map(([name, s]) => {
                         const remaining = b === "IDIMU"
-                          ? s.received - s.returned - s.transferredOut - s.delivered
+                          ? s.received - s.returnedTotal - s.transferredOut - s.delivered
                           : s.transferredIn - s.delivered;
                         return { name, ...s, remaining };
                       });
@@ -2518,22 +2580,39 @@ function InventoryAdminView({ branch, onLogout }) {
                             }}>
                               <p style={{ fontSize: "13px", fontWeight: 600, color: item.remaining <= 0 ? "var(--red)" : "var(--text)" }}>{item.name}</p>
                               <div style={{ display: "flex", gap: "14px", alignItems: "center" }}>
-                                {b === "IDIMU"
-                                  ? [["Received", item.received, "var(--green)"], ["Sent Out", item.transferredOut, "var(--amber)"], ["Returned", item.returned, "var(--text-dim)"], ["Delivered", item.delivered, "var(--blue)"]]
-                                      .map(([label, val, color]) => (
+                                {b === "IDIMU" ? (
+                                    <>
+                                      {[["Received", item.received, "var(--green)"], ["Delivered", item.delivered, "var(--blue)"]].map(([label, val, color]) => (
                                         <div key={label} style={{ textAlign: "center", minWidth: "52px" }}>
                                           <p style={{ fontSize: "8px", color: "var(--text-faint)", fontWeight: 600, marginBottom: "2px" }}>{label}</p>
                                           <p style={{ fontFamily: "var(--display)", fontSize: "13px", fontWeight: 700, color }}>{val}</p>
                                         </div>
-                                      ))
-                                  : [["Transferred In", item.transferredIn, "var(--green)"], ["Delivered", item.delivered, "var(--blue)"]]
-                                      .map(([label, val, color]) => (
-                                        <div key={label} style={{ textAlign: "center", minWidth: "60px" }}>
-                                          <p style={{ fontSize: "8px", color: "var(--text-faint)", fontWeight: 600, marginBottom: "2px" }}>{label}</p>
-                                          <p style={{ fontFamily: "var(--display)", fontSize: "13px", fontWeight: 700, color }}>{val}</p>
-                                        </div>
-                                      ))
-                                }
+                                      ))}
+                                      {/* Sent Out — breakdown by branch */}
+                                      <div style={{ textAlign: "center", minWidth: "60px" }}>
+                                        <p style={{ fontSize: "8px", color: "var(--text-faint)", fontWeight: 600, marginBottom: "2px" }}>Sent Out</p>
+                                        <p style={{ fontFamily: "var(--display)", fontSize: "13px", fontWeight: 700, color: "var(--amber)" }}>{item.transferredOut}</p>
+                                        {Object.entries(item.sentTo||{}).map(([br, qty]) => (
+                                          <p key={br} style={{ fontSize: "9px", color: "var(--text-faint)", marginTop: "1px" }}>{br}: {qty}</p>
+                                        ))}
+                                      </div>
+                                      {/* Returned — breakdown by branch */}
+                                      <div style={{ textAlign: "center", minWidth: "60px" }}>
+                                        <p style={{ fontSize: "8px", color: "var(--text-faint)", fontWeight: 600, marginBottom: "2px" }}>Returned</p>
+                                        <p style={{ fontFamily: "var(--display)", fontSize: "13px", fontWeight: 700, color: "var(--text-dim)" }}>{item.returnedTotal}</p>
+                                        {Object.entries(item.returnedFrom||{}).map(([br, qty]) => (
+                                          <p key={br} style={{ fontSize: "9px", color: "var(--text-faint)", marginTop: "1px" }}>{br}: {qty}</p>
+                                        ))}
+                                      </div>
+                                    </>
+                                  ) : (
+                                    [["Transferred In", item.transferredIn, "var(--green)"], ["Delivered", item.delivered, "var(--blue)"]].map(([label, val, color]) => (
+                                      <div key={label} style={{ textAlign: "center", minWidth: "60px" }}>
+                                        <p style={{ fontSize: "8px", color: "var(--text-faint)", fontWeight: 600, marginBottom: "2px" }}>{label}</p>
+                                        <p style={{ fontFamily: "var(--display)", fontSize: "13px", fontWeight: 700, color }}>{val}</p>
+                                      </div>
+                                    ))
+                                  )}
                                 <div style={{ textAlign: "center", background: item.remaining <= 0 ? "#fecaca" : "var(--blue-pale)", border: `1px solid ${item.remaining <= 0 ? "#fca5a5" : "var(--blue-pale2)"}`, borderRadius: "var(--r-sm)", padding: "6px 12px", minWidth: "64px" }}>
                                   <p style={{ fontSize: "8px", fontWeight: 700, color: item.remaining <= 0 ? "var(--red)" : "var(--blue)", marginBottom: "2px" }}>Remaining</p>
                                   <p style={{ fontFamily: "var(--display)", fontSize: "18px", fontWeight: 800, color: item.remaining <= 0 ? "var(--red)" : "var(--blue)", lineHeight: 1 }}>{item.remaining}</p>
