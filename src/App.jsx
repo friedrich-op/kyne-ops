@@ -741,7 +741,7 @@ function RiderManagerView({ branch, onLogout }) {
   const [roadSaved, setRoadSaved] = useState(false);
 
   useEffect(() => {
-    // Load instantly from cache, then refresh in background
+    setSyncing(true);
     Promise.all([sheetGet("Orders"), sheetGet("RoadExpenses")])
       .then(([o, r]) => {
         setOrders(o.filter(x => x.branch === branch));
