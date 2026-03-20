@@ -244,6 +244,9 @@ const USERS = [
   { username: "aja manager",   password: "ajakyne@2022",    role: "manager",       branch: "AJA"   },
   { username: "ketu manager",  password: "ketukyne@2023",   role: "manager",       branch: "KETU"  },
   { username: "idimu rider",   password: "idimurider@2021", role: "rider-manager", branch: "IDIMU" },
+  { username: "idimu inventory", password: "idimyinv@2024",  role: "inventory-admin", branch: "IDIMU" },
+  { username: "ketu inventory",  password: "ketuinv@2024",   role: "inventory-view",  branch: "KETU"  },
+  { username: "aja inventory",   password: "ajainv@2024",    role: "inventory-view",  branch: "AJA"   },
   { username: "aja rider",     password: "ajarider@2022",   role: "rider-manager", branch: "AJA"   },
   { username: "ketu rider",    password: "keturider@2023",  role: "rider-manager", branch: "KETU"  },
 ];
@@ -589,10 +592,10 @@ function RemitCard({ rec }) {
   );
 }
 
-function BonusRow({ name, count }) {
+function BonusRow({ name, count, period }) {
   const bonus = calcBonus(count, name);
   const rate  = getBonusRate(count, name);
-  const next  = count<=200?200:count<=250?250:count<=300?300:null;
+  const next  = CUSTOM_BONUS[name] ? null : count<=200?200:count<=250?250:count<=300?300:null;
   return (
     <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
       padding:"10px 0", borderBottom:"1px solid var(--border)" }}>
@@ -600,12 +603,13 @@ function BonusRow({ name, count }) {
         <RiderAvatar name={name} size={30}/>
         <div>
           <p style={{ fontSize:"13px", fontWeight:600 }}>{name}</p>
-          <p style={{ fontSize:"10px", color:"var(--text-faint)" }}>{count} orders · ₦{rate}/order</p>
+          <p style={{ fontSize:"10px", color:"var(--text-faint)" }}>{count} orders · ₦{rate.toLocaleString()}/order</p>
+          {period && <p style={{ fontSize:"10px", color:"var(--blue)", marginTop:"1px" }}>{period}</p>}
         </div>
       </div>
       <div style={{ textAlign:"right" }}>
         <p style={{ fontFamily:"var(--display)", fontSize:"13px", fontWeight:700, color:"var(--blue)" }}>{fmt(bonus)}</p>
-        {next && <p style={{ fontSize:"10px", color:"var(--text-faint)" }}>{next - count} to next tier</p>}
+        {next && <p style={{ fontSize:"10px", color:"var(--text-faint)" }}>{next - count} more to next tier</p>}
       </div>
     </div>
   );
@@ -1306,16 +1310,18 @@ function ManagerView({ branch, onLogout }) {
     }
   }
 
-  function clearRider(rider, date) {
+  function clearRider(rider, date, method="cash") {
     const key      = `${rider}-${date}`;
     const existing = riderPayments[key];
     if (!existing) return;
-    // Add the outstanding amount to cash so it reflects in Send to Boss totals
+    const outstanding = existing.outstanding || 0;
     const rec = {
       ...existing,
-      cash: (existing.cash || 0) + (existing.outstanding || 0),
+      cash:        method === "cash" ? (existing.cash || 0) + outstanding : (existing.cash || 0),
+      pos:         method === "pos"  ? (existing.pos  || 0) + outstanding : (existing.pos  || 0),
       outstanding: 0,
-      cleared: true
+      cleared:     true,
+      clearMethod: method,
     };
     setRiderPayments(p => ({ ...p, [key]: rec }));
     sheetUpdate("RiderPayments", rec).catch(() => {});
@@ -1478,9 +1484,14 @@ function ManagerView({ branch, onLogout }) {
 
                     {/* Outstanding clear button */}
                     {!cleared && outstanding > 0 && (paidCash > 0 || paidPOS > 0) && (
-                      <button onClick={() => clearRider(rider, date)} style={{ marginTop: "10px", width: "100%", padding: "8px", background: "#ecfdf5", border: "1.5px solid #a7f3d0", borderRadius: "var(--r-sm)", color: "var(--green)", fontSize: "12px", fontWeight: 700, cursor: "pointer" }}>
-                        ✓ Mark Outstanding as Cleared
-                      </button>
+                      <div style={{ marginTop:"10px", display:"flex", gap:"8px" }}>
+                        <button onClick={() => clearRider(rider, date, "cash")} style={{ flex:1, padding:"8px", background:"#ecfdf5", border:"1.5px solid #a7f3d0", borderRadius:"var(--r-sm)", color:"var(--green)", fontSize:"12px", fontWeight:700, cursor:"pointer" }}>
+                          ✓ Cleared by Cash
+                        </button>
+                        <button onClick={() => clearRider(rider, date, "pos")} style={{ flex:1, padding:"8px", background:"#eff4ff", border:"1.5px solid #bfdbfe", borderRadius:"var(--r-sm)", color:"var(--blue)", fontSize:"12px", fontWeight:700, cursor:"pointer" }}>
+                          ✓ Cleared by POS
+                        </button>
+                      </div>
                     )}
                   </div>
                 );
@@ -1700,15 +1711,15 @@ function ManagerView({ branch, onLogout }) {
                             }}>
                               <p style={{fontSize:"13px",fontWeight:600,color:item.remaining<=0?"var(--red)":"var(--text)"}}>{item.name}</p>
                               <div style={{display:"flex",gap:"10px",alignItems:"center"}}>
-                                {[["In",item.received,"var(--green)"],["Out",item.delivered,"var(--blue)"],["Ret",item.returned,"var(--amber)"]].map(([label,val,color])=>(
-                                  <div key={label} style={{textAlign:"center",minWidth:"32px"}}>
-                                    <p style={{fontSize:"9px",color:"var(--text-faint)",fontWeight:600,marginBottom:"1px"}}>{label}</p>
-                                    <p style={{fontFamily:"var(--display)",fontSize:"13px",fontWeight:700,color}}>{val}</p>
+                                {[["Received",item.received,"var(--green)"],["Delivered",item.delivered,"var(--blue)"],["Returned",item.returned,"var(--amber)"]].map(([label,val,color])=>(
+                                  <div key={label} style={{textAlign:"center",minWidth:"52px"}}>
+                                    <p style={{fontSize:"8px",color:"var(--text-faint)",fontWeight:600,marginBottom:"2px"}}>{label}</p>
+                                    <p style={{fontFamily:"var(--display)",fontSize:"14px",fontWeight:800,color}}>{val}</p>
                                   </div>
                                 ))}
-                                <div style={{textAlign:"center",background:item.remaining<=0?"#fecaca":"var(--blue-pale)",border:`1px solid ${item.remaining<=0?"#fca5a5":"var(--blue-pale2)"}`,borderRadius:"var(--r-sm)",padding:"4px 10px",minWidth:"48px"}}>
-                                  <p style={{fontSize:"9px",fontWeight:600,color:item.remaining<=0?"var(--red)":"var(--blue)",marginBottom:"1px"}}>Left</p>
-                                  <p style={{fontFamily:"var(--display)",fontSize:"16px",fontWeight:800,color:item.remaining<=0?"var(--red)":"var(--blue)",lineHeight:1}}>{item.remaining}</p>
+                                <div style={{textAlign:"center",background:item.remaining<=0?"#fecaca":"var(--blue-pale)",border:`1px solid ${item.remaining<=0?"#fca5a5":"var(--blue-pale2)"}`,borderRadius:"var(--r-sm)",padding:"6px 14px",minWidth:"60px"}}>
+                                  <p style={{fontSize:"8px",fontWeight:700,color:item.remaining<=0?"var(--red)":"var(--blue)",marginBottom:"2px"}}>Remaining</p>
+                                  <p style={{fontFamily:"var(--display)",fontSize:"18px",fontWeight:800,color:item.remaining<=0?"var(--red)":"var(--blue)",lineHeight:1}}>{item.remaining}</p>
                                 </div>
                               </div>
                             </div>
@@ -1911,9 +1922,7 @@ function ManagerView({ branch, onLogout }) {
                   <div><label className="k-label">Date</label><input type="date" className="k-input" value={expForm.date} onChange={e => setExpForm(p => ({ ...p, date: e.target.value }))} /></div>
                   <div>
                     <label className="k-label">Category</label>
-                    <select className="k-input" value={expForm.category} onChange={e => setExpForm(p => ({ ...p, category: e.target.value }))}>
-                      <option>Fuel</option><option>Office</option><option>Repairs</option><option>Salary</option><option>Other</option>
-                    </select>
+                    <input className="k-input" placeholder="e.g. Fuel, Office, Repairs..." value={expForm.category} onChange={e => setExpForm(p => ({ ...p, category: e.target.value }))}/>
                   </div>
                   <div style={{ gridColumn: "1/-1" }}><label className="k-label">Description</label><input className="k-input" placeholder="What was this for?" value={expForm.description} onChange={e => setExpForm(p => ({ ...p, description: e.target.value }))} /></div>
                   <div><label className="k-label">Amount (₦)</label><input type="number" className="k-input" placeholder="0" value={expForm.amount} onChange={e => setExpForm(p => ({ ...p, amount: e.target.value }))} /></div>
@@ -2037,7 +2046,7 @@ function BossView({ onLogout }) {
             <PeriodFilter mode={mode} setMode={setMode} customDate={customDate} setCustomDate={setCustomDate} customDateEnd={customDateEnd} setCustomDateEnd={setCustomDateEnd}/>
 
             {/* ── SECTION 1: REMITTANCE STATUS PER BRANCH ── */}
-            <p style={{fontSize:"10px",fontWeight:700,color:"var(--text-faint)",textTransform:"uppercase",letterSpacing:".08em",marginBottom:"8px"}}>Remittance Status</p>
+            <p style={{fontSize:"12px",fontWeight:800,color:"var(--navy)",letterSpacing:".02em",marginBottom:"8px"}}>Remittance Status</p>
             <div style={{display:"flex",flexDirection:"column",gap:"8px",marginBottom:"20px"}}>
               {branchStats.map(b => {
                 const allSent   = b.cashRemaining <= 0 && b.totalSent > 0;
@@ -2083,7 +2092,7 @@ function BossView({ onLogout }) {
             </div>
 
             {/* ── SECTION 2: TOTALS SUMMARY ── */}
-            <p style={{fontSize:"10px",fontWeight:700,color:"var(--text-faint)",textTransform:"uppercase",letterSpacing:".08em",marginBottom:"8px"}}>Today's Totals</p>
+            <p style={{fontSize:"12px",fontWeight:800,color:"var(--navy)",letterSpacing:".02em",marginBottom:"8px"}}>Today's Totals</p>
             <div style={{background:"var(--navy)",borderRadius:"var(--r)",padding:"16px",marginBottom:"20px"}}>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px",marginBottom:"10px"}}>
                 {[
@@ -2116,16 +2125,19 @@ function BossView({ onLogout }) {
             {/* ── SECTION 3: OUTSTANDING RIDERS ── */}
             {branchStats.some(b=>b.branchPayments.length>0) && (
               <>
-                <p style={{fontSize:"10px",fontWeight:700,color:"var(--text-faint)",textTransform:"uppercase",letterSpacing:".08em",marginBottom:"8px"}}>Outstanding Riders</p>
+                <p style={{fontSize:"12px",fontWeight:800,color:"var(--navy)",letterSpacing:".02em",marginBottom:"8px"}}>Outstanding Riders</p>
                 <div style={{display:"flex",flexDirection:"column",gap:"6px",marginBottom:"20px"}}>
                   {branchStats.filter(b=>b.branchPayments.length>0).map(b=>(
                     b.branchPayments.map(rp=>(
-                      <div key={rp.id||rp.rider} style={{background:"#fef2f2",border:"1.5px solid #fecaca",borderRadius:"var(--r-sm)",padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                        <div>
-                          <p style={{fontSize:"13px",fontWeight:600}}>{rp.rider}</p>
-                          <p style={{fontSize:"11px",color:"var(--text-faint)",marginTop:"1px"}}>{b.branch} · {rp.date}</p>
+                      <div key={rp.id||rp.rider} style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:"var(--r-sm)",padding:"7px 12px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                        <div style={{display:"flex",alignItems:"center",gap:"8px"}}>
+                          <RiderAvatar name={rp.rider} size={24}/>
+                          <div>
+                            <p style={{fontSize:"12px",fontWeight:600}}>{rp.rider}</p>
+                            <p style={{fontSize:"10px",color:"var(--text-faint)"}}>{b.branch} · {rp.date}</p>
+                          </div>
                         </div>
-                        <p style={{fontFamily:"var(--display)",fontSize:"14px",fontWeight:800,color:"var(--red)"}}>{fmt(rp.outstanding)}</p>
+                        <p style={{fontFamily:"var(--display)",fontSize:"13px",fontWeight:800,color:"var(--red)"}}>{fmt(rp.outstanding)}</p>
                       </div>
                     ))
                   ))}
@@ -2197,10 +2209,10 @@ function BossView({ onLogout }) {
                   </div>
                   <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:"8px", marginBottom:"10px" }}>
                     {[
-                      ["Cash In",   fmt(b.cash),      "var(--blue)"],
-                      ["POS In",    fmt(b.pos),       "var(--green)"],
-                      ["Expected",  fmt(b.expected),  "var(--text)"],
-                      ["Received",  fmt(b.totalSent), b.diff<0?"var(--red)":Math.abs(b.diff)<1&&b.totalSent>0?"var(--green)":"var(--text)"],
+                      ["Cash Collected",  fmt(b.cashCollected),  "var(--blue)"],
+                      ["POS Collected",   fmt(b.posCollected),   "var(--green)"],
+                      ["Net Expected",    fmt(b.expected),       "var(--text)"],
+                      ["Cash Sent",       fmt(b.totalSent),      b.diff<0?"var(--red)":Math.abs(b.diff)<1&&b.totalSent>0?"var(--green)":"var(--text)"],
                     ].map(([label,val,color])=>(
                       <div key={label} style={{ background:"var(--surface2)", border:"1px solid var(--border)", borderRadius:"var(--r-sm)", padding:"10px" }}>
                         <p style={{ fontSize:"9px", fontWeight:600, color:"var(--text-faint)", marginBottom:"3px" }}>{label}</p>
@@ -2232,7 +2244,7 @@ function BossView({ onLogout }) {
                 <Card>
                   {RIDERS[b].map(name => {
                     const count = orders.filter(o=>o.rider===name&&isInBonusPeriod(o.date)&&o.status==="Delivered").length;
-                    return <BonusRow key={name} name={name} count={count}/>;
+                    return <BonusRow key={name} name={name} count={count} period={period.label}/>;
                   })}
                   <div style={{ marginTop:"12px", paddingTop:"12px", borderTop:"1.5px solid var(--border)",
                     display:"flex", justifyContent:"space-between", alignItems:"center" }}>
@@ -2307,10 +2319,10 @@ function BossView({ onLogout }) {
                             }}>
                               <p style={{fontSize:"12px",fontWeight:600,color:item.remaining<=0?"var(--red)":"var(--text)"}}>{item.name}</p>
                               <div style={{display:"flex",gap:"10px",alignItems:"center"}}>
-                                {[["In",item.received,"var(--green)"],["Out",item.delivered,"var(--blue)"],["Ret",item.returned,"var(--amber)"],["Left",item.remaining,item.remaining<=0?"var(--red)":"var(--blue)"]].map(([label,val,color])=>(
-                                  <div key={label} style={{textAlign:"center",minWidth:"28px"}}>
-                                    <p style={{fontSize:"8px",color:"var(--text-faint)",fontWeight:600,marginBottom:"1px"}}>{label}</p>
-                                    <p style={{fontFamily:"var(--display)",fontSize:"13px",fontWeight:700,color}}>{val}</p>
+                                {[["Received",item.received,"var(--green)"],["Delivered",item.delivered,"var(--blue)"],["Returned",item.returned,"var(--amber)"],["Remaining",item.remaining,item.remaining<=0?"var(--red)":"var(--blue)"]].map(([label,val,color])=>(
+                                  <div key={label} style={{textAlign:"center",minWidth:"52px"}}>
+                                    <p style={{fontSize:"8px",color:"var(--text-faint)",fontWeight:600,marginBottom:"2px"}}>{label}</p>
+                                    <p style={{fontFamily:"var(--display)",fontSize:"14px",fontWeight:800,color}}>{val}</p>
                                   </div>
                                 ))}
                               </div>
@@ -2366,6 +2378,459 @@ function BossView({ onLogout }) {
 }
 
 // ─── ROOT ─────────────────────────────────────────────────────────────────────
+
+// ─── INVENTORY ADMIN VIEW (IDIMU) ────────────────────────────────────────────
+function InventoryAdminView({ branch, onLogout }) {
+  const [tab, setTab] = useState("stock");
+  const [inventory, setInventory] = useState([]);
+  const [allOrders, setAllOrders] = useState([]);
+  const [syncing, setSyncing] = useState(true);
+  const [search, setSearch] = useState("");
+  const [mode, setMode] = useState("today");
+  const [customDate, setCustomDate] = useState("");
+  const [customDateEnd, setCustomDateEnd] = useState("");
+  const [saved, setSaved] = useState("");
+
+  // Forms
+  const [waybillInForm, setWaybillInForm]   = useState({ date: TODAY, vendor: VENDOR_NAMES[0], product: "", qty: "", note: "" });
+  const [waybillOutForm, setWaybillOutForm] = useState({ date: TODAY, vendor: VENDOR_NAMES[0], product: "", qty: "", note: "" });
+  const [transferForm, setTransferForm]     = useState({ date: TODAY, vendor: VENDOR_NAMES[0], product: "", qty: "", fromBranch: "IDIMU", toBranch: "KETU", note: "" });
+
+  useEffect(() => {
+    setSyncing(true);
+    Promise.all([sheetGet("Inventory"), sheetGet("Orders")])
+      .then(([inv, ord]) => { setInventory(inv); setAllOrders(ord.filter(o => o.status === "Delivered")); })
+      .catch(() => {}).finally(() => setSyncing(false));
+  }, []);
+
+  function saveEntry(type, form, resetForm) {
+    if (!form.vendor || !form.product || !form.qty) return;
+    const rec = { id: Date.now(), type, branch: form.fromBranch || "IDIMU", ...form, qty: Number(form.qty) || 0 };
+    setInventory(p => [rec, ...p]);
+    resetForm();
+    setSaved(type); setTimeout(() => setSaved(""), 3000);
+    sheetAdd("Inventory", rec).catch(() => {});
+    // If transfer, also add receiving record for target branch
+    if (type === "transfer-out") {
+      const recIn = { ...rec, id: Date.now() + 1, type: "transfer-in", branch: form.toBranch };
+      setInventory(p => [recIn, ...p]);
+      sheetAdd("Inventory", recIn).catch(() => {});
+    }
+  }
+
+  // Build stock map for a given branch
+  function buildStockMap(targetBranch) {
+    const vendorMap = {};
+    // Waybill in (received from vendor) — only for IDIMU
+    inventory.filter(i => i.branch === "IDIMU" && i.type === "waybill-in").forEach(i => {
+      const v = (i.vendor || "").trim(), n = (i.product || "").trim();
+      if (!v || !n) return;
+      if (!vendorMap[v]) vendorMap[v] = {};
+      if (!vendorMap[v][n]) vendorMap[v][n] = { received: 0, delivered: 0, returned: 0, transferredOut: 0, transferredIn: 0 };
+      if (targetBranch === "IDIMU") vendorMap[v][n].received += Number(i.qty) || 0;
+    });
+    // Waybill out (returned to vendor) — only IDIMU
+    inventory.filter(i => i.branch === "IDIMU" && i.type === "waybill-out").forEach(i => {
+      const v = (i.vendor || "").trim(), n = (i.product || "").trim();
+      if (!v || !n || !vendorMap[v]?.[n]) return;
+      if (targetBranch === "IDIMU") vendorMap[v][n].returned += Number(i.qty) || 0;
+    });
+    // Transfer out from IDIMU
+    inventory.filter(i => i.branch === "IDIMU" && i.type === "transfer-out").forEach(i => {
+      const v = (i.vendor || "").trim(), n = (i.product || "").trim();
+      if (!v || !n) return;
+      if (!vendorMap[v]) vendorMap[v] = {};
+      if (!vendorMap[v][n]) vendorMap[v][n] = { received: 0, delivered: 0, returned: 0, transferredOut: 0, transferredIn: 0 };
+      if (targetBranch === "IDIMU") vendorMap[v][n].transferredOut += Number(i.qty) || 0;
+      if (i.toBranch === targetBranch) vendorMap[v][n].transferredIn += Number(i.qty) || 0;
+    });
+    // Transfer in to target branch
+    inventory.filter(i => i.branch === targetBranch && i.type === "transfer-in").forEach(i => {
+      const v = (i.vendor || "").trim(), n = (i.product || "").trim();
+      if (!v || !n) return;
+      if (!vendorMap[v]) vendorMap[v] = {};
+      if (!vendorMap[v][n]) vendorMap[v][n] = { received: 0, delivered: 0, returned: 0, transferredOut: 0, transferredIn: 0 };
+      vendorMap[v][n].transferredIn += Number(i.qty) || 0;
+    });
+    // Deliveries subtract from stock
+    allOrders.filter(o => o.branch === targetBranch).forEach(o => {
+      const prods = typeof o.products === "string" ? (() => { try { return JSON.parse(o.products); } catch { return []; } })() : (o.products || []);
+      prods.forEach(p => {
+        const v = (p.vendor || "").trim(), n = (p.name || "").trim();
+        if (!v || !n || !vendorMap[v]?.[n]) return;
+        vendorMap[v][n].delivered += Number(p.qty) || 1;
+      });
+    });
+    return vendorMap;
+  }
+
+  const TABS = [
+    { id: "stock",       label: "📦 All Stock" },
+    { id: "waybill-in",  label: "⬇ Waybill In" },
+    { id: "waybill-out", label: "⬆ Waybill Out" },
+    { id: "transfer",    label: "↔ Transfer" },
+    { id: "history",     label: "📋 History" },
+  ];
+
+  return (
+    <div style={{ minHeight: "100vh", background: "var(--bg)" }}>
+      <style>{GS}</style>
+      <TopNav subtitle="Inventory Admin · IDIMU" tabs={TABS} activeTab={tab} setActiveTab={setTab} onLogout={onLogout} syncing={syncing} />
+      <div style={{ maxWidth: "960px", margin: "0 auto", padding: "20px 16px" }}>
+
+        {/* ── ALL STOCK ── */}
+        {tab === "stock" && (
+          <div className="fade-in">
+            <SectionTitle title="Stock Overview — All Branches" />
+            <input className="k-input" placeholder="🔍 Search vendor or product..." value={search} onChange={e => setSearch(e.target.value)} style={{ marginBottom: "16px" }} />
+            {BRANCHES.map(b => {
+              const vendorMap = buildStockMap(b);
+              const vendorList = Object.keys(vendorMap).filter(v =>
+                !search || v.toLowerCase().includes(search.toLowerCase()) ||
+                Object.keys(vendorMap[v]).some(p => p.toLowerCase().includes(search.toLowerCase()))
+              ).sort();
+              if (vendorList.length === 0) return null;
+              return (
+                <div key={b} style={{ marginBottom: "24px" }}>
+                  <div style={{ background: "var(--navy)", borderRadius: "var(--r)", padding: "10px 16px", marginBottom: "10px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <p style={{ fontFamily: "var(--display)", fontSize: "15px", fontWeight: 800, color: "#fff" }}>{b} Branch</p>
+                    <span style={{ fontSize: "11px", color: "rgba(255,255,255,.5)" }}>{vendorList.length} vendors</span>
+                  </div>
+                  {vendorList.map(vendor => {
+                    const products = Object.entries(vendorMap[vendor])
+                      .filter(([name]) => !search || vendor.toLowerCase().includes(search.toLowerCase()) || name.toLowerCase().includes(search.toLowerCase()))
+                      .map(([name, s]) => {
+                        const remaining = b === "IDIMU"
+                          ? s.received - s.returned - s.transferredOut - s.delivered
+                          : s.transferredIn - s.delivered;
+                        return { name, ...s, remaining };
+                      });
+                    return (
+                      <div key={vendor} style={{ marginBottom: "12px" }}>
+                        <p style={{ fontSize: "12px", fontWeight: 800, color: "var(--blue)", marginBottom: "6px", paddingLeft: "4px" }}>{vendor}</p>
+                        <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                          {products.map(item => (
+                            <div key={item.name} style={{
+                              background: item.remaining <= 0 ? "#fef2f2" : "#fff",
+                              border: `1.5px solid ${item.remaining <= 0 ? "#fecaca" : "var(--border)"}`,
+                              borderRadius: "var(--r-sm)", padding: "10px 14px",
+                              display: "flex", alignItems: "center", justifyContent: "space-between"
+                            }}>
+                              <p style={{ fontSize: "13px", fontWeight: 600, color: item.remaining <= 0 ? "var(--red)" : "var(--text)" }}>{item.name}</p>
+                              <div style={{ display: "flex", gap: "14px", alignItems: "center" }}>
+                                {b === "IDIMU"
+                                  ? [["Received", item.received, "var(--green)"], ["Sent Out", item.transferredOut, "var(--amber)"], ["Returned", item.returned, "var(--text-dim)"], ["Delivered", item.delivered, "var(--blue)"]]
+                                      .map(([label, val, color]) => (
+                                        <div key={label} style={{ textAlign: "center", minWidth: "52px" }}>
+                                          <p style={{ fontSize: "8px", color: "var(--text-faint)", fontWeight: 600, marginBottom: "2px" }}>{label}</p>
+                                          <p style={{ fontFamily: "var(--display)", fontSize: "13px", fontWeight: 700, color }}>{val}</p>
+                                        </div>
+                                      ))
+                                  : [["Transferred In", item.transferredIn, "var(--green)"], ["Delivered", item.delivered, "var(--blue)"]]
+                                      .map(([label, val, color]) => (
+                                        <div key={label} style={{ textAlign: "center", minWidth: "60px" }}>
+                                          <p style={{ fontSize: "8px", color: "var(--text-faint)", fontWeight: 600, marginBottom: "2px" }}>{label}</p>
+                                          <p style={{ fontFamily: "var(--display)", fontSize: "13px", fontWeight: 700, color }}>{val}</p>
+                                        </div>
+                                      ))
+                                }
+                                <div style={{ textAlign: "center", background: item.remaining <= 0 ? "#fecaca" : "var(--blue-pale)", border: `1px solid ${item.remaining <= 0 ? "#fca5a5" : "var(--blue-pale2)"}`, borderRadius: "var(--r-sm)", padding: "6px 12px", minWidth: "64px" }}>
+                                  <p style={{ fontSize: "8px", fontWeight: 700, color: item.remaining <= 0 ? "var(--red)" : "var(--blue)", marginBottom: "2px" }}>Remaining</p>
+                                  <p style={{ fontFamily: "var(--display)", fontSize: "18px", fontWeight: 800, color: item.remaining <= 0 ? "var(--red)" : "var(--blue)", lineHeight: 1 }}>{item.remaining}</p>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* ── WAYBILL IN ── */}
+        {tab === "waybill-in" && (
+          <div className="fade-in">
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+              <SectionTitle title="Waybill In" sub="Products received from vendors" />
+              {saved === "waybill-in" && <Tag label="✓ Saved" type="green" />}
+            </div>
+            <Card accent="blue">
+              <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--blue)", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: "14px" }}>Log Stock Received</p>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "12px" }}>
+                <div><label className="k-label">Date</label><input type="date" className="k-input" value={waybillInForm.date} onChange={e => setWaybillInForm(f => ({ ...f, date: e.target.value }))} /></div>
+                <div>
+                  <label className="k-label">Vendor</label>
+                  <select className="k-input" value={waybillInForm.vendor} onChange={e => setWaybillInForm(f => ({ ...f, vendor: e.target.value, product: "" }))}>
+                    {VENDOR_NAMES.map(v => <option key={v}>{v}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="k-label">Product</label>
+                  <select className="k-input" value={waybillInForm.product} onChange={e => setWaybillInForm(f => ({ ...f, product: e.target.value }))} disabled={!waybillInForm.vendor}>
+                    <option value="">Select product...</option>
+                    {(VENDORS[waybillInForm.vendor] || []).map(p => <option key={p}>{p}</option>)}
+                  </select>
+                </div>
+                <div><label className="k-label">Quantity</label><input type="number" className="k-input" min="1" placeholder="0" value={waybillInForm.qty} onChange={e => setWaybillInForm(f => ({ ...f, qty: e.target.value }))} /></div>
+                <div style={{ gridColumn: "1/-1" }}><label className="k-label">Note (optional)</label><input className="k-input" placeholder="Waybill no., remarks..." value={waybillInForm.note} onChange={e => setWaybillInForm(f => ({ ...f, note: e.target.value }))} /></div>
+              </div>
+              <button disabled={!waybillInForm.product || !waybillInForm.qty}
+                onClick={() => saveEntry("waybill-in", waybillInForm, () => setWaybillInForm({ date: TODAY, vendor: VENDOR_NAMES[0], product: "", qty: "", note: "" }))}
+                style={{ width: "100%", padding: "10px", background: !waybillInForm.product || !waybillInForm.qty ? "#f1f5f9" : "var(--green)", border: "none", borderRadius: "var(--r-sm)", color: !waybillInForm.product || !waybillInForm.qty ? "#94a3b8" : "#fff", fontFamily: "var(--display)", fontSize: "13px", fontWeight: 700, cursor: !waybillInForm.product || !waybillInForm.qty ? "not-allowed" : "pointer" }}>
+                Save Waybill In
+              </button>
+            </Card>
+            <PeriodFilter mode={mode} setMode={setMode} customDate={customDate} setCustomDate={setCustomDate} customDateEnd={customDateEnd} setCustomDateEnd={setCustomDateEnd} />
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+              {filterByPeriod(inventory.filter(i => i.type === "waybill-in"), mode, customDate, customDateEnd).map(i => (
+                <div key={i.id} style={{ background: "#fff", border: "1.5px solid var(--border)", borderRadius: "var(--r-sm)", padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", boxShadow: "var(--shadow)" }}>
+                  <div>
+                    <p style={{ fontSize: "13px", fontWeight: 600 }}>{i.product}</p>
+                    <p style={{ fontSize: "11px", color: "var(--text-faint)", marginTop: "2px" }}>{i.vendor} · {i.date}{i.note ? ` · ${i.note}` : ""}</p>
+                  </div>
+                  <Tag label={`+${i.qty}`} type="green" />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── WAYBILL OUT ── */}
+        {tab === "waybill-out" && (
+          <div className="fade-in">
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+              <SectionTitle title="Waybill Out" sub="Products returned to vendors" />
+              {saved === "waybill-out" && <Tag label="✓ Saved" type="green" />}
+            </div>
+            <Card accent="blue">
+              <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--blue)", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: "14px" }}>Log Return to Vendor</p>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "12px" }}>
+                <div><label className="k-label">Date</label><input type="date" className="k-input" value={waybillOutForm.date} onChange={e => setWaybillOutForm(f => ({ ...f, date: e.target.value }))} /></div>
+                <div>
+                  <label className="k-label">Vendor</label>
+                  <select className="k-input" value={waybillOutForm.vendor} onChange={e => setWaybillOutForm(f => ({ ...f, vendor: e.target.value, product: "" }))}>
+                    {VENDOR_NAMES.map(v => <option key={v}>{v}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="k-label">Product</label>
+                  <select className="k-input" value={waybillOutForm.product} onChange={e => setWaybillOutForm(f => ({ ...f, product: e.target.value }))} disabled={!waybillOutForm.vendor}>
+                    <option value="">Select product...</option>
+                    {(VENDORS[waybillOutForm.vendor] || []).map(p => <option key={p}>{p}</option>)}
+                  </select>
+                </div>
+                <div><label className="k-label">Quantity</label><input type="number" className="k-input" min="1" placeholder="0" value={waybillOutForm.qty} onChange={e => setWaybillOutForm(f => ({ ...f, qty: e.target.value }))} /></div>
+                <div style={{ gridColumn: "1/-1" }}><label className="k-label">Note (optional)</label><input className="k-input" placeholder="Reason, waybill no..." value={waybillOutForm.note} onChange={e => setWaybillOutForm(f => ({ ...f, note: e.target.value }))} /></div>
+              </div>
+              <button disabled={!waybillOutForm.product || !waybillOutForm.qty}
+                onClick={() => saveEntry("waybill-out", waybillOutForm, () => setWaybillOutForm({ date: TODAY, vendor: VENDOR_NAMES[0], product: "", qty: "", note: "" }))}
+                style={{ width: "100%", padding: "10px", background: !waybillOutForm.product || !waybillOutForm.qty ? "#f1f5f9" : "var(--amber)", border: "none", borderRadius: "var(--r-sm)", color: !waybillOutForm.product || !waybillOutForm.qty ? "#94a3b8" : "#fff", fontFamily: "var(--display)", fontSize: "13px", fontWeight: 700, cursor: !waybillOutForm.product || !waybillOutForm.qty ? "not-allowed" : "pointer" }}>
+                Save Waybill Out
+              </button>
+            </Card>
+            <PeriodFilter mode={mode} setMode={setMode} customDate={customDate} setCustomDate={setCustomDate} customDateEnd={customDateEnd} setCustomDateEnd={setCustomDateEnd} />
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+              {filterByPeriod(inventory.filter(i => i.type === "waybill-out"), mode, customDate, customDateEnd).map(i => (
+                <div key={i.id} style={{ background: "#fff", border: "1.5px solid var(--border)", borderRadius: "var(--r-sm)", padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", boxShadow: "var(--shadow)" }}>
+                  <div>
+                    <p style={{ fontSize: "13px", fontWeight: 600 }}>{i.product}</p>
+                    <p style={{ fontSize: "11px", color: "var(--text-faint)", marginTop: "2px" }}>{i.vendor} · {i.date}{i.note ? ` · ${i.note}` : ""}</p>
+                  </div>
+                  <Tag label={`-${i.qty}`} type="amber" />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── TRANSFER ── */}
+        {tab === "transfer" && (
+          <div className="fade-in">
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+              <SectionTitle title="Transfer Stock" sub="Move products between branches" />
+              {saved === "transfer-out" && <Tag label="✓ Transferred" type="green" />}
+            </div>
+            <Card accent="blue">
+              <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--blue)", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: "14px" }}>Log Transfer</p>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "12px" }}>
+                <div><label className="k-label">Date</label><input type="date" className="k-input" value={transferForm.date} onChange={e => setTransferForm(f => ({ ...f, date: e.target.value }))} /></div>
+                <div>
+                  <label className="k-label">Vendor</label>
+                  <select className="k-input" value={transferForm.vendor} onChange={e => setTransferForm(f => ({ ...f, vendor: e.target.value, product: "" }))}>
+                    {VENDOR_NAMES.map(v => <option key={v}>{v}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="k-label">Product</label>
+                  <select className="k-input" value={transferForm.product} onChange={e => setTransferForm(f => ({ ...f, product: e.target.value }))} disabled={!transferForm.vendor}>
+                    <option value="">Select product...</option>
+                    {(VENDORS[transferForm.vendor] || []).map(p => <option key={p}>{p}</option>)}
+                  </select>
+                </div>
+                <div><label className="k-label">Quantity</label><input type="number" className="k-input" min="1" placeholder="0" value={transferForm.qty} onChange={e => setTransferForm(f => ({ ...f, qty: e.target.value }))} /></div>
+                <div>
+                  <label className="k-label">From Branch</label>
+                  <select className="k-input" value={transferForm.fromBranch} onChange={e => setTransferForm(f => ({ ...f, fromBranch: e.target.value }))}>
+                    {BRANCHES.map(b => <option key={b}>{b}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="k-label">To Branch</label>
+                  <select className="k-input" value={transferForm.toBranch} onChange={e => setTransferForm(f => ({ ...f, toBranch: e.target.value }))}>
+                    {BRANCHES.filter(b => b !== transferForm.fromBranch).map(b => <option key={b}>{b}</option>)}
+                  </select>
+                </div>
+                <div style={{ gridColumn: "1/-1" }}><label className="k-label">Note (optional)</label><input className="k-input" placeholder="Any remarks..." value={transferForm.note} onChange={e => setTransferForm(f => ({ ...f, note: e.target.value }))} /></div>
+              </div>
+              <button disabled={!transferForm.product || !transferForm.qty || transferForm.fromBranch === transferForm.toBranch}
+                onClick={() => saveEntry("transfer-out", transferForm, () => setTransferForm({ date: TODAY, vendor: VENDOR_NAMES[0], product: "", qty: "", fromBranch: "IDIMU", toBranch: "KETU", note: "" }))}
+                style={{ width: "100%", padding: "10px", background: !transferForm.product || !transferForm.qty ? "#f1f5f9" : "var(--blue)", border: "none", borderRadius: "var(--r-sm)", color: !transferForm.product || !transferForm.qty ? "#94a3b8" : "#fff", fontFamily: "var(--display)", fontSize: "13px", fontWeight: 700, cursor: !transferForm.product || !transferForm.qty ? "not-allowed" : "pointer" }}>
+                Confirm Transfer
+              </button>
+            </Card>
+            <PeriodFilter mode={mode} setMode={setMode} customDate={customDate} setCustomDate={setCustomDate} customDateEnd={customDateEnd} setCustomDateEnd={setCustomDateEnd} />
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+              {filterByPeriod(inventory.filter(i => i.type === "transfer-out"), mode, customDate, customDateEnd).map(i => (
+                <div key={i.id} style={{ background: "#fff", border: "1.5px solid var(--border)", borderRadius: "var(--r-sm)", padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", boxShadow: "var(--shadow)" }}>
+                  <div>
+                    <p style={{ fontSize: "13px", fontWeight: 600 }}>{i.product}</p>
+                    <p style={{ fontSize: "11px", color: "var(--text-faint)", marginTop: "2px" }}>{i.vendor} · {i.fromBranch} → {i.toBranch} · {i.date}</p>
+                  </div>
+                  <Tag label={`${i.qty} units`} type="blue" />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── HISTORY ── */}
+        {tab === "history" && (
+          <div className="fade-in">
+            <SectionTitle title="Full History" />
+            <PeriodFilter mode={mode} setMode={setMode} customDate={customDate} setCustomDate={setCustomDate} customDateEnd={customDateEnd} setCustomDateEnd={setCustomDateEnd} />
+            <input className="k-input" placeholder="🔍 Search product or vendor..." value={search} onChange={e => setSearch(e.target.value)} style={{ marginBottom: "12px" }} />
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+              {filterByPeriod(inventory, mode, customDate, customDateEnd)
+                .filter(i => !search || i.product?.toLowerCase().includes(search.toLowerCase()) || i.vendor?.toLowerCase().includes(search.toLowerCase()))
+                .sort((a, b) => b.id - a.id)
+                .map(i => {
+                  const typeMap = { "waybill-in": ["⬇ Waybill In", "green"], "waybill-out": ["⬆ Waybill Out", "amber"], "transfer-out": ["→ Transfer Out", "blue"], "transfer-in": ["← Transfer In", "blue"] };
+                  const [label, type] = typeMap[i.type] || ["?", "default"];
+                  return (
+                    <div key={i.id} style={{ background: "#fff", border: "1.5px solid var(--border)", borderRadius: "var(--r-sm)", padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", boxShadow: "var(--shadow)" }}>
+                      <div>
+                        <p style={{ fontSize: "13px", fontWeight: 600 }}>{i.product}</p>
+                        <p style={{ fontSize: "11px", color: "var(--text-faint)", marginTop: "2px" }}>
+                          {i.vendor} · {i.branch} · {i.date}
+                          {i.type === "transfer-out" ? ` → ${i.toBranch}` : ""}
+                          {i.note ? ` · ${i.note}` : ""}
+                        </p>
+                      </div>
+                      <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                        <Tag label={label} type={type} />
+                        <span style={{ fontFamily: "var(--display)", fontSize: "13px", fontWeight: 700, color: "var(--text)" }}>{i.qty}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── INVENTORY VIEW ONLY (KETU / AJA) ────────────────────────────────────────
+function InventoryViewOnly({ branch, onLogout }) {
+  const [inventory, setInventory] = useState([]);
+  const [allOrders, setAllOrders] = useState([]);
+  const [syncing, setSyncing] = useState(true);
+  const [search, setSearch] = useState("");
+
+  useEffect(() => {
+    setSyncing(true);
+    Promise.all([sheetGet("Inventory"), sheetGet("Orders")])
+      .then(([inv, ord]) => { setInventory(inv); setAllOrders(ord.filter(o => o.status === "Delivered" && o.branch === branch)); })
+      .catch(() => {}).finally(() => setSyncing(false));
+  }, [branch]);
+
+  // Build stock for this branch: transfers in - deliveries
+  const vendorMap = {};
+  inventory.filter(i => i.branch === branch && i.type === "transfer-in").forEach(i => {
+    const v = (i.vendor || "").trim(), n = (i.product || "").trim();
+    if (!v || !n) return;
+    if (!vendorMap[v]) vendorMap[v] = {};
+    if (!vendorMap[v][n]) vendorMap[v][n] = { transferredIn: 0, delivered: 0 };
+    vendorMap[v][n].transferredIn += Number(i.qty) || 0;
+  });
+  allOrders.forEach(o => {
+    const prods = typeof o.products === "string" ? (() => { try { return JSON.parse(o.products); } catch { return []; } })() : (o.products || []);
+    prods.forEach(p => {
+      const v = (p.vendor || "").trim(), n = (p.name || "").trim();
+      if (!v || !n || !vendorMap[v]?.[n]) return;
+      vendorMap[v][n].delivered += Number(p.qty) || 1;
+    });
+  });
+
+  const vendorList = Object.keys(vendorMap).filter(v =>
+    !search || v.toLowerCase().includes(search.toLowerCase()) ||
+    Object.keys(vendorMap[v]).some(p => p.toLowerCase().includes(search.toLowerCase()))
+  ).sort();
+
+  const TABS = [{ id: "stock", label: "Stock" }];
+
+  return (
+    <div style={{ minHeight: "100vh", background: "var(--bg)" }}>
+      <style>{GS}</style>
+      <TopNav subtitle={`${branch} · Inventory (View Only)`} tabs={TABS} activeTab="stock" setActiveTab={() => {}} onLogout={onLogout} syncing={syncing} />
+      <div style={{ maxWidth: "960px", margin: "0 auto", padding: "20px 16px" }}>
+        <SectionTitle title={`${branch} Branch Stock`} sub="Read only — managed by IDIMU inventory admin" />
+        <input className="k-input" placeholder="🔍 Search vendor or product..." value={search} onChange={e => setSearch(e.target.value)} style={{ marginBottom: "16px" }} />
+        {vendorList.length === 0 && <p style={{ textAlign: "center", padding: "48px 0", fontSize: "13px", color: "var(--text-faint)" }}>No stock transferred to {branch} yet</p>}
+        {vendorList.map(vendor => {
+          const products = Object.entries(vendorMap[vendor])
+            .filter(([name]) => !search || vendor.toLowerCase().includes(search.toLowerCase()) || name.toLowerCase().includes(search.toLowerCase()))
+            .map(([name, s]) => ({ name, ...s, remaining: s.transferredIn - s.delivered }));
+          return (
+            <div key={vendor} style={{ marginBottom: "16px" }}>
+              <p style={{ fontSize: "13px", fontWeight: 800, color: "var(--navy)", marginBottom: "8px", paddingLeft: "2px" }}>{vendor}</p>
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                {products.map(item => (
+                  <div key={item.name} style={{
+                    background: item.remaining <= 0 ? "#fef2f2" : "#fff",
+                    border: `1.5px solid ${item.remaining <= 0 ? "#fecaca" : "var(--border)"}`,
+                    borderRadius: "var(--r-sm)", padding: "10px 14px",
+                    display: "flex", alignItems: "center", justifyContent: "space-between"
+                  }}>
+                    <p style={{ fontSize: "13px", fontWeight: 600, color: item.remaining <= 0 ? "var(--red)" : "var(--text)" }}>{item.name}</p>
+                    <div style={{ display: "flex", gap: "14px", alignItems: "center" }}>
+                      {[["Transferred In", item.transferredIn, "var(--green)"], ["Delivered", item.delivered, "var(--blue)"]].map(([label, val, color]) => (
+                        <div key={label} style={{ textAlign: "center", minWidth: "60px" }}>
+                          <p style={{ fontSize: "8px", color: "var(--text-faint)", fontWeight: 600, marginBottom: "2px" }}>{label}</p>
+                          <p style={{ fontFamily: "var(--display)", fontSize: "14px", fontWeight: 800, color }}>{val}</p>
+                        </div>
+                      ))}
+                      <div style={{ textAlign: "center", background: item.remaining <= 0 ? "#fecaca" : "var(--blue-pale)", border: `1px solid ${item.remaining <= 0 ? "#fca5a5" : "var(--blue-pale2)"}`, borderRadius: "var(--r-sm)", padding: "6px 14px", minWidth: "64px" }}>
+                        <p style={{ fontSize: "8px", fontWeight: 700, color: item.remaining <= 0 ? "var(--red)" : "var(--blue)", marginBottom: "2px" }}>Remaining</p>
+                        <p style={{ fontFamily: "var(--display)", fontSize: "18px", fontWeight: 800, color: item.remaining <= 0 ? "var(--red)" : "var(--blue)", lineHeight: 1 }}>{item.remaining}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [session, setSession] = useState(() => {
     try {
@@ -2386,7 +2851,9 @@ export default function App() {
   }
 
   if (!session) return <LoginScreen onLogin={handleLogin}/>;
-  if (session.role === "boss")          return <BossView         onLogout={handleLogout}/>;
-  if (session.role === "manager")       return <ManagerView      branch={session.branch} onLogout={handleLogout}/>;
-  if (session.role === "rider-manager") return <RiderManagerView branch={session.branch} onLogout={handleLogout}/>;
+  if (session.role === "boss")            return <BossView           onLogout={handleLogout}/>;
+  if (session.role === "manager")         return <ManagerView        branch={session.branch} onLogout={handleLogout}/>;
+  if (session.role === "rider-manager")   return <RiderManagerView   branch={session.branch} onLogout={handleLogout}/>;
+  if (session.role === "inventory-admin") return <InventoryAdminView branch={session.branch} onLogout={handleLogout}/>;
+  if (session.role === "inventory-view")  return <InventoryViewOnly  branch={session.branch} onLogout={handleLogout}/>;
 }
