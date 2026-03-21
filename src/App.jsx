@@ -131,21 +131,10 @@ function calcOutstanding(order) {
 // ─── GOOGLE SHEETS ────────────────────────────────────────────────────────────
 const API_URL = "https://script.google.com/macros/s/AKfycbx0n97CWtI-uRQ_k58uuN2c8TBCd8xl37z-sxtcDz2agi0IzfI2-r7k9dpg6NP7KDYL/exec";
 
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes cache
 async function sheetGet(tab) {
-  // Try cache first — show instantly, then refresh in background
-  try {
-    const cacheKey = `kyne_cache_${tab}`;
-    const cached = sessionStorage.getItem(cacheKey);
-    if (cached) {
-      const { data, ts } = JSON.parse(cached);
-      if (Date.now() - ts < CACHE_TTL) return parseSheetRows(data);
-    }
-  } catch {}
   try {
     const res = await fetch(`${API_URL}?tab=${tab}`);
     const data = await res.json();
-    try { sessionStorage.setItem(`kyne_cache_${tab}`, JSON.stringify({ data, ts: Date.now() })); } catch {}
     return parseSheetRows(data);
   } catch { return []; }
 }
