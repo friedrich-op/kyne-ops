@@ -2472,8 +2472,8 @@ function InventoryAdminView({ branch, onLogout }) {
       }
     });
 
-    // Transfer out — track per destination branch
-    inv.filter(i => i.type === "transfer-out" && i.branch === i.fromBranch).forEach(i => {
+    // Transfer out — track per destination branch (for IDIMU stock deduction)
+    inv.filter(i => i.type === "transfer-out").forEach(i => {
       const v=(i.vendor||"").trim(), n=(i.product||"").trim();
       if (!v||!n) return;
       ensure(v, n);
@@ -2486,12 +2486,10 @@ function InventoryAdminView({ branch, onLogout }) {
           vendorMap[v][n].sentTo[to] += Number(i.qty)||0;
         }
       }
-      if (targetBranch === to) {
-        vendorMap[v][n].transferredIn += Number(i.qty)||0;
-      }
     });
 
-    // Transfer in (also track from transfer-in records for receiving branches)
+    // Transfer in — ONLY use transfer-in records for receiving branches (not transfer-out)
+    // This prevents double counting since saveEntry creates both records
     inv.filter(i => i.type === "transfer-in" && i.branch === targetBranch).forEach(i => {
       const v=(i.vendor||"").trim(), n=(i.product||"").trim();
       if (!v||!n) return;
@@ -2564,49 +2562,56 @@ function InventoryAdminView({ branch, onLogout }) {
                             <div key={item.name} style={{
                               background: item.remaining <= 0 ? "#fef2f2" : "#fff",
                               border: `1.5px solid ${item.remaining <= 0 ? "#fecaca" : "var(--border)"}`,
-                              borderRadius: "var(--r-sm)", padding: "10px 14px",
-                              display: "flex", alignItems: "center", justifyContent: "space-between"
+                              borderRadius: "var(--r-sm)", padding: "12px 14px",
                             }}>
-                              <p style={{ fontSize: "13px", fontWeight: 600, color: item.remaining <= 0 ? "var(--red)" : "var(--text)" }}>{item.name}</p>
-                              <div style={{ display: "flex", gap: "14px", alignItems: "center" }}>
-                                {b === "IDIMU" ? (
-                                    <>
-                                      {[["Received", item.received, "var(--green)"], ["Delivered", item.delivered, "var(--blue)"]].map(([label, val, color]) => (
-                                        <div key={label} style={{ textAlign: "center", minWidth: "52px" }}>
-                                          <p style={{ fontSize: "8px", color: "var(--text-faint)", fontWeight: 600, marginBottom: "2px" }}>{label}</p>
-                                          <p style={{ fontFamily: "var(--display)", fontSize: "13px", fontWeight: 700, color }}>{val}</p>
-                                        </div>
-                                      ))}
-                                      {/* Sent Out — breakdown by branch */}
-                                      <div style={{ textAlign: "center", minWidth: "60px" }}>
-                                        <p style={{ fontSize: "8px", color: "var(--text-faint)", fontWeight: 600, marginBottom: "2px" }}>Sent Out</p>
-                                        <p style={{ fontFamily: "var(--display)", fontSize: "13px", fontWeight: 700, color: "var(--amber)" }}>{item.transferredOut}</p>
-                                        {Object.entries(item.sentTo||{}).map(([br, qty]) => (
-                                          <p key={br} style={{ fontSize: "9px", color: "var(--text-faint)", marginTop: "1px" }}>{br}: {qty}</p>
-                                        ))}
-                                      </div>
-                                      {/* Returned — breakdown by branch */}
-                                      <div style={{ textAlign: "center", minWidth: "60px" }}>
-                                        <p style={{ fontSize: "8px", color: "var(--text-faint)", fontWeight: 600, marginBottom: "2px" }}>Returned</p>
-                                        <p style={{ fontFamily: "var(--display)", fontSize: "13px", fontWeight: 700, color: "var(--text-dim)" }}>{item.returnedTotal}</p>
-                                        {Object.entries(item.returnedFrom||{}).map(([br, qty]) => (
-                                          <p key={br} style={{ fontSize: "9px", color: "var(--text-faint)", marginTop: "1px" }}>{br}: {qty}</p>
-                                        ))}
-                                      </div>
-                                    </>
-                                  ) : (
-                                    [["Transferred In", item.transferredIn, "var(--green)"], ["Delivered", item.delivered, "var(--blue)"]].map(([label, val, color]) => (
-                                      <div key={label} style={{ textAlign: "center", minWidth: "60px" }}>
-                                        <p style={{ fontSize: "8px", color: "var(--text-faint)", fontWeight: 600, marginBottom: "2px" }}>{label}</p>
-                                        <p style={{ fontFamily: "var(--display)", fontSize: "13px", fontWeight: 700, color }}>{val}</p>
-                                      </div>
-                                    ))
-                                  )}
-                                <div style={{ textAlign: "center", background: item.remaining <= 0 ? "#fecaca" : "var(--blue-pale)", border: `1px solid ${item.remaining <= 0 ? "#fca5a5" : "var(--blue-pale2)"}`, borderRadius: "var(--r-sm)", padding: "6px 12px", minWidth: "64px" }}>
-                                  <p style={{ fontSize: "8px", fontWeight: 700, color: item.remaining <= 0 ? "var(--red)" : "var(--blue)", marginBottom: "2px" }}>Remaining</p>
-                                  <p style={{ fontFamily: "var(--display)", fontSize: "18px", fontWeight: 800, color: item.remaining <= 0 ? "var(--red)" : "var(--blue)", lineHeight: 1 }}>{item.remaining}</p>
+                              {/* Product name + remaining */}
+                              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"10px" }}>
+                                <p style={{ fontSize: "13px", fontWeight: 700, color: item.remaining <= 0 ? "var(--red)" : "var(--text)" }}>{item.name}</p>
+                                <div style={{ textAlign:"center", background: item.remaining <= 0 ? "#fecaca" : "var(--blue-pale)", border:`1px solid ${item.remaining<=0?"#fca5a5":"var(--blue-pale2)"}`, borderRadius:"var(--r-sm)", padding:"4px 14px" }}>
+                                  <p style={{ fontSize:"9px", fontWeight:700, color:item.remaining<=0?"var(--red)":"var(--blue)", marginBottom:"1px" }}>Remaining</p>
+                                  <p style={{ fontFamily:"var(--display)", fontSize:"20px", fontWeight:800, color:item.remaining<=0?"var(--red)":"var(--blue)", lineHeight:1 }}>{item.remaining}</p>
                                 </div>
                               </div>
+                              {/* Stats row */}
+                              {b === "IDIMU" ? (
+                                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:"8px" }}>
+                                  <div style={{ background:"var(--surface2)", border:"1px solid var(--border)", borderRadius:"var(--r-sm)", padding:"8px" }}>
+                                    <p style={{ fontSize:"10px", color:"var(--text-faint)", fontWeight:600, marginBottom:"4px" }}>Received</p>
+                                    <p style={{ fontFamily:"var(--display)", fontSize:"18px", fontWeight:800, color:"var(--green)" }}>{item.received}</p>
+                                  </div>
+                                  <div style={{ background:"var(--surface2)", border:"1px solid var(--border)", borderRadius:"var(--r-sm)", padding:"8px" }}>
+                                    <p style={{ fontSize:"10px", color:"var(--text-faint)", fontWeight:600, marginBottom:"4px" }}>Delivered</p>
+                                    <p style={{ fontFamily:"var(--display)", fontSize:"18px", fontWeight:800, color:"var(--blue)" }}>{item.delivered}</p>
+                                  </div>
+                                  <div style={{ background:"#fffbeb", border:"1px solid #fde68a", borderRadius:"var(--r-sm)", padding:"8px" }}>
+                                    <p style={{ fontSize:"10px", color:"var(--amber)", fontWeight:700, marginBottom:"4px" }}>Sent Out — {item.transferredOut}</p>
+                                    {Object.entries(item.sentTo||{}).map(([br, qty]) => (
+                                      <div key={br} style={{ display:"flex", justifyContent:"space-between" }}>
+                                        <span style={{ fontSize:"12px", color:"var(--text-dim)", fontWeight:600 }}>{br}</span>
+                                        <span style={{ fontSize:"12px", fontWeight:800, color:"var(--amber)" }}>{qty}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                  <div style={{ background:"var(--surface2)", border:"1px solid var(--border)", borderRadius:"var(--r-sm)", padding:"8px" }}>
+                                    <p style={{ fontSize:"10px", color:"var(--text-dim)", fontWeight:700, marginBottom:"4px" }}>Returned — {item.returnedTotal}</p>
+                                    {Object.entries(item.returnedFrom||{}).map(([br, qty]) => (
+                                      <div key={br} style={{ display:"flex", justifyContent:"space-between" }}>
+                                        <span style={{ fontSize:"12px", color:"var(--text-dim)", fontWeight:600 }}>{br}</span>
+                                        <span style={{ fontSize:"12px", fontWeight:800, color:"var(--text-dim)" }}>{qty}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              ) : (
+                                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"8px" }}>
+                                  {[["Transferred In", item.transferredIn, "var(--green)"], ["Delivered", item.delivered, "var(--blue)"]].map(([label, val, color]) => (
+                                    <div key={label} style={{ background:"var(--surface2)", border:"1px solid var(--border)", borderRadius:"var(--r-sm)", padding:"8px" }}>
+                                      <p style={{ fontSize:"10px", color:"var(--text-faint)", fontWeight:600, marginBottom:"4px" }}>{label}</p>
+                                      <p style={{ fontFamily:"var(--display)", fontSize:"18px", fontWeight:800, color }}>{val}</p>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
                             </div>
                           ))}
                         </div>
