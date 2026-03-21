@@ -2448,7 +2448,7 @@ function InventoryAdminView({ branch, onLogout }) {
       if (!vendorMap[v][n]) vendorMap[v][n] = {
         received: 0, delivered: 0, returnedTotal: 0,
         transferredOut: 0, transferredIn: 0,
-        sentTo: {}, returnedFrom: {} // per-branch breakdown
+        sentTo: {}, returnedFrom: {}, receivedFrom: {}
       };
     }
 
@@ -2472,7 +2472,7 @@ function InventoryAdminView({ branch, onLogout }) {
       }
     });
 
-    // Transfer out — track per destination branch (for IDIMU stock deduction)
+    // Transfer out — any branch sending to another (deduct from sender)
     inv.filter(i => i.type === "transfer-out").forEach(i => {
       const v=(i.vendor||"").trim(), n=(i.product||"").trim();
       if (!v||!n) return;
@@ -2488,13 +2488,19 @@ function InventoryAdminView({ branch, onLogout }) {
       }
     });
 
-    // Transfer in — ONLY use transfer-in records for receiving branches (not transfer-out)
-    // This prevents double counting since saveEntry creates both records
+    // Transfer in — ONLY use transfer-in records for receiving branches
     inv.filter(i => i.type === "transfer-in" && i.branch === targetBranch).forEach(i => {
       const v=(i.vendor||"").trim(), n=(i.product||"").trim();
       if (!v||!n) return;
       ensure(v, n);
       vendorMap[v][n].transferredIn += Number(i.qty)||0;
+      // Track which branch sent it
+      const from = i.fromBranch || "";
+      if (from) {
+        if (!vendorMap[v][n].receivedFrom) vendorMap[v][n].receivedFrom = {};
+        if (!vendorMap[v][n].receivedFrom[from]) vendorMap[v][n].receivedFrom[from] = 0;
+        vendorMap[v][n].receivedFrom[from] += Number(i.qty)||0;
+      }
     });
 
     // Deliveries
@@ -2551,7 +2557,7 @@ function InventoryAdminView({ branch, onLogout }) {
                       .map(([name, s]) => {
                         const remaining = b === "IDIMU"
                           ? s.received - s.returnedTotal - s.transferredOut - s.delivered
-                          : s.transferredIn - s.delivered;
+                          : s.transferredIn - s.transferredOut - s.delivered;
                         return { name, ...s, remaining };
                       });
                     return (
@@ -2603,13 +2609,32 @@ function InventoryAdminView({ branch, onLogout }) {
                                   </div>
                                 </div>
                               ) : (
-                                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"8px" }}>
-                                  {[["Transferred In", item.transferredIn, "var(--green)"], ["Delivered", item.delivered, "var(--blue)"]].map(([label, val, color]) => (
-                                    <div key={label} style={{ background:"var(--surface2)", border:"1px solid var(--border)", borderRadius:"var(--r-sm)", padding:"8px" }}>
-                                      <p style={{ fontSize:"10px", color:"var(--text-faint)", fontWeight:600, marginBottom:"4px" }}>{label}</p>
-                                      <p style={{ fontFamily:"var(--display)", fontSize:"18px", fontWeight:800, color }}>{val}</p>
+                                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:"8px" }}>
+                                  <div style={{ background:"var(--surface2)", border:"1px solid var(--border)", borderRadius:"var(--r-sm)", padding:"8px" }}>
+                                    <p style={{ fontSize:"10px", color:"var(--text-faint)", fontWeight:600, marginBottom:"4px" }}>Received In</p>
+                                    <p style={{ fontFamily:"var(--display)", fontSize:"18px", fontWeight:800, color:"var(--green)" }}>{item.transferredIn}</p>
+                                    {Object.entries(item.receivedFrom||{}).map(([br,qty])=>(
+                                      <div key={br} style={{display:"flex",justifyContent:"space-between"}}>
+                                        <span style={{fontSize:"11px",color:"var(--text-dim)",fontWeight:600}}>{br}</span>
+                                        <span style={{fontSize:"11px",fontWeight:800,color:"var(--green)"}}>{qty}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                  <div style={{ background:"var(--surface2)", border:"1px solid var(--border)", borderRadius:"var(--r-sm)", padding:"8px" }}>
+                                    <p style={{ fontSize:"10px", color:"var(--text-faint)", fontWeight:600, marginBottom:"4px" }}>Delivered</p>
+                                    <p style={{ fontFamily:"var(--display)", fontSize:"18px", fontWeight:800, color:"var(--blue)" }}>{item.delivered}</p>
+                                  </div>
+                                  {item.transferredOut > 0 && (
+                                    <div style={{ background:"#fffbeb", border:"1px solid #fde68a", borderRadius:"var(--r-sm)", padding:"8px" }}>
+                                      <p style={{ fontSize:"10px", color:"var(--amber)", fontWeight:700, marginBottom:"4px" }}>Sent Out — {item.transferredOut}</p>
+                                      {Object.entries(item.sentTo||{}).map(([br,qty])=>(
+                                        <div key={br} style={{display:"flex",justifyContent:"space-between"}}>
+                                          <span style={{fontSize:"11px",color:"var(--text-dim)",fontWeight:600}}>{br}</span>
+                                          <span style={{fontSize:"11px",fontWeight:800,color:"var(--amber)"}}>{qty}</span>
+                                        </div>
+                                      ))}
                                     </div>
-                                  ))}
+                                  )}
                                 </div>
                               )}
                             </div>
@@ -2759,11 +2784,42 @@ function InventoryAdminView({ branch, onLogout }) {
                 </div>
                 <div style={{ gridColumn: "1/-1" }}><label className="k-label">Note (optional)</label><input className="k-input" placeholder="Any remarks..." value={transferForm.note} onChange={e => setTransferForm(f => ({ ...f, note: e.target.value }))} /></div>
               </div>
-              <button disabled={!transferForm.product || !transferForm.qty || transferForm.fromBranch === transferForm.toBranch}
-                onClick={() => saveEntry("transfer-out", transferForm, () => setTransferForm({ date: TODAY, vendor: VENDOR_NAMES[0], product: "", qty: "", fromBranch: "IDIMU", toBranch: "KETU", note: "" }))}
-                style={{ width: "100%", padding: "10px", background: !transferForm.product || !transferForm.qty ? "#f1f5f9" : "var(--blue)", border: "none", borderRadius: "var(--r-sm)", color: !transferForm.product || !transferForm.qty ? "#94a3b8" : "#fff", fontFamily: "var(--display)", fontSize: "13px", fontWeight: 700, cursor: !transferForm.product || !transferForm.qty ? "not-allowed" : "pointer" }}>
-                Confirm Transfer
-              </button>
+              {(() => {
+                // Check remaining stock in fromBranch
+                const fromMap = buildStockMap(transferForm.fromBranch, inventory, allOrders);
+                const fromProduct = fromMap[transferForm.vendor]?.[transferForm.product];
+                const fromRemaining = fromProduct
+                  ? (transferForm.fromBranch === "IDIMU"
+                      ? fromProduct.received - fromProduct.returnedTotal - fromProduct.transferredOut - fromProduct.delivered
+                      : fromProduct.transferredIn - fromProduct.transferredOut - fromProduct.delivered)
+                  : 0;
+                const transferQty = Number(transferForm.qty) || 0;
+                const overStock = transferQty > fromRemaining && transferForm.product && transferQty > 0;
+                const disabled = !transferForm.product || !transferForm.qty || transferForm.fromBranch === transferForm.toBranch || overStock;
+                return (
+                  <>
+                    {overStock && (
+                      <div style={{ background:"#fef2f2", border:"1.5px solid #fecaca", borderRadius:"var(--r-sm)", padding:"10px 14px", marginBottom:"12px" }}>
+                        <p style={{ fontSize:"12px", fontWeight:600, color:"var(--red)" }}>⚠ Not enough stock</p>
+                        <p style={{ fontSize:"11px", color:"#f87171", marginTop:"2px" }}>
+                          {transferForm.fromBranch} only has {fromRemaining} units of {transferForm.product} remaining. You are trying to transfer {transferQty}.
+                        </p>
+                      </div>
+                    )}
+                    {transferForm.product && fromRemaining >= 0 && !overStock && transferForm.qty && (
+                      <div style={{ background:"var(--blue-pale)", border:"1.5px solid var(--blue-pale2)", borderRadius:"var(--r-sm)", padding:"8px 14px", marginBottom:"12px", display:"flex", justifyContent:"space-between" }}>
+                        <span style={{ fontSize:"12px", color:"var(--text-dim)" }}>{transferForm.fromBranch} remaining after transfer</span>
+                        <span style={{ fontFamily:"var(--display)", fontSize:"13px", fontWeight:700, color:"var(--blue)" }}>{fromRemaining - transferQty}</span>
+                      </div>
+                    )}
+                    <button disabled={disabled}
+                      onClick={() => saveEntry("transfer-out", transferForm, () => setTransferForm({ date: TODAY, vendor: VENDOR_NAMES[0], product: "", qty: "", fromBranch: "IDIMU", toBranch: "KETU", note: "" }))}
+                      style={{ width:"100%", padding:"10px", background:disabled?"#f1f5f9":"var(--blue)", border:"none", borderRadius:"var(--r-sm)", color:disabled?"#94a3b8":"#fff", fontFamily:"var(--display)", fontSize:"13px", fontWeight:700, cursor:disabled?"not-allowed":"pointer" }}>
+                      Confirm Transfer
+                    </button>
+                  </>
+                );
+              })()}
             </Card>
             <PeriodFilter mode={mode} setMode={setMode} customDate={customDate} setCustomDate={setCustomDate} customDateEnd={customDateEnd} setCustomDateEnd={setCustomDateEnd} />
             <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
