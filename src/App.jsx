@@ -2556,7 +2556,7 @@ function InventoryAdminView({ branch, onLogout }) {
                       .filter(([name]) => !search || vendor.toLowerCase().includes(search.toLowerCase()) || name.toLowerCase().includes(search.toLowerCase()))
                       .map(([name, s]) => {
                         const remaining = b === "IDIMU"
-                          ? s.received - s.returnedTotal - s.transferredOut - s.delivered
+                          ? s.received - s.returnedTotal - s.transferredOut + s.transferredIn - s.delivered
                           : s.transferredIn - s.transferredOut - s.delivered;
                         return { name, ...s, remaining };
                       });
@@ -2790,7 +2790,7 @@ function InventoryAdminView({ branch, onLogout }) {
                 const fromProduct = fromMap[transferForm.vendor]?.[transferForm.product];
                 const fromRemaining = fromProduct
                   ? (transferForm.fromBranch === "IDIMU"
-                      ? fromProduct.received - fromProduct.returnedTotal - fromProduct.transferredOut - fromProduct.delivered
+                      ? fromProduct.received - fromProduct.returnedTotal - fromProduct.transferredOut + fromProduct.transferredIn - fromProduct.delivered
                       : fromProduct.transferredIn - fromProduct.transferredOut - fromProduct.delivered)
                   : 0;
                 const transferQty = Number(transferForm.qty) || 0;
