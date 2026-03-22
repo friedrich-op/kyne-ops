@@ -1656,29 +1656,44 @@ function ManagerView({ branch, onLogout }) {
 
             {/* ── STOCK OVERVIEW ── */}
             {invSubTab === "stock" && (() => {
-              // Build vendor→product stock map
+              // Build stock map using correct type names (waybill-in, transfer-in, etc.)
               const vendorMap = {};
-              inventory.filter(i=>i.type==="receive").forEach(i=>{
+              function ensureVM(v,n){
+                if(!vendorMap[v])vendorMap[v]={};
+                if(!vendorMap[v][n])vendorMap[v][n]={received:0,delivered:0,returned:0,transferredIn:0,transferredOut:0};
+              }
+              // Waybill in (IDIMU only) or old "receive" type
+              inventory.filter(i=>(i.type==="waybill-in"||i.type==="receive")).forEach(i=>{
                 const v=(i.vendor||"Unknown").trim(), n=(i.product||"").trim();
-                if (!n) return;
-                if (!vendorMap[v]) vendorMap[v]={};
-                if (!vendorMap[v][n]) vendorMap[v][n]={received:0,delivered:0,returned:0};
-                vendorMap[v][n].received += Number(i.qty)||0;
+                if(!n) return; ensureVM(v,n);
+                if(branch==="IDIMU") vendorMap[v][n].received += Number(i.qty)||0;
               });
+              // Transfer in to this branch
+              inventory.filter(i=>i.type==="transfer-in" && i.branch===branch).forEach(i=>{
+                const v=(i.vendor||"").trim(), n=(i.product||"").trim();
+                if(!n) return; ensureVM(v,n);
+                vendorMap[v][n].transferredIn += Number(i.qty)||0;
+              });
+              // Waybill out or old "return" type
+              inventory.filter(i=>(i.type==="waybill-out"||i.type==="return")).forEach(i=>{
+                const v=(i.vendor||"").trim(), n=(i.product||"").trim();
+                if(!n||!vendorMap[v]||!vendorMap[v][n]) return;
+                vendorMap[v][n].returned += Number(i.qty)||0;
+              });
+              // Transfer out from this branch
+              inventory.filter(i=>i.type==="transfer-out" && (i.fromBranch===branch||i.branch===branch)).forEach(i=>{
+                const v=(i.vendor||"").trim(), n=(i.product||"").trim();
+                if(!n||!vendorMap[v]||!vendorMap[v][n]) return;
+                vendorMap[v][n].transferredOut += Number(i.qty)||0;
+              });
+              // Deliveries
               orders.forEach(o=>{
                 const prods = typeof o.products==="string"?(()=>{try{return JSON.parse(o.products);}catch{return [];}})():(o.products||[]);
                 prods.forEach(p=>{
                   const v=(p.vendor||"Unknown").trim(), n=(p.name||"").trim();
-                  if (!n) return;
-                  if (!vendorMap[v]) vendorMap[v]={};
-                  if (!vendorMap[v][n]) vendorMap[v][n]={received:0,delivered:0,returned:0};
+                  if(!n) return; ensureVM(v,n);
                   vendorMap[v][n].delivered += Number(p.qty)||1;
                 });
-              });
-              inventory.filter(i=>i.type==="return").forEach(i=>{
-                const v=(i.vendor||"Unknown").trim(), n=(i.product||"").trim();
-                if (!n||!vendorMap[v]||!vendorMap[v][n]) return;
-                vendorMap[v][n].returned += Number(i.qty)||0;
               });
 
               const vendorList = Object.keys(vendorMap).sort();
@@ -1690,7 +1705,11 @@ function ManagerView({ branch, onLogout }) {
                   {vendorList.filter(v => !invSearch || v.toLowerCase().includes(invSearch.toLowerCase()) || Object.keys(vendorMap[v]).some(p=>p.toLowerCase().includes(invSearch.toLowerCase()))).map(vendor=>{
                     const products = Object.entries(vendorMap[vendor])
                       .filter(([name])=> !invSearch || vendor.toLowerCase().includes(invSearch.toLowerCase()) || name.toLowerCase().includes(invSearch.toLowerCase()))
-                      .map(([name,s])=>({name,...s,remaining:s.received-s.delivered-s.returned}));
+                      .map(([name,s])=>({name,...s,
+                        remaining: branch==="IDIMU"
+                          ? s.received - s.returned - s.transferredOut + s.transferredIn - s.delivered
+                          : s.transferredIn - s.transferredOut - s.delivered
+                      }));
                     if (products.length===0) return null;
                     return (
                       <div key={vendor} style={{marginBottom:"16px"}}>
@@ -1952,6 +1971,63 @@ function ManagerView({ branch, onLogout }) {
       </div>
     </div>
   );
+}
+
+// Shared stock map builder used by BossView and InventoryAdminView
+function buildBossStockMap(targetBranch, inventory, orders) {
+  const vendorMap = {};
+  function ensure(v, n) {
+    if (!vendorMap[v]) vendorMap[v] = {};
+    if (!vendorMap[v][n]) vendorMap[v][n] = {
+      received:0, delivered:0, returnedTotal:0,
+      transferredOut:0, transferredIn:0,
+      sentTo:{}, returnedFrom:{}, receivedFrom:{}
+    };
+  }
+  // Waybill in
+  inventory.filter(i=>i.branch==="IDIMU" && i.type==="waybill-in").forEach(i=>{
+    const v=(i.vendor||"").trim(), n=(i.product||"").trim();
+    if(!v||!n) return; ensure(v,n);
+    if(targetBranch==="IDIMU") vendorMap[v][n].received += Number(i.qty)||0;
+  });
+  // Waybill out
+  inventory.filter(i=>i.type==="waybill-out").forEach(i=>{
+    const v=(i.vendor||"").trim(), n=(i.product||"").trim(), b=i.branch||"IDIMU";
+    if(!v||!n) return; ensure(v,n);
+    if(targetBranch===b){
+      vendorMap[v][n].returnedTotal += Number(i.qty)||0;
+      if(!vendorMap[v][n].returnedFrom[b]) vendorMap[v][n].returnedFrom[b]=0;
+      vendorMap[v][n].returnedFrom[b] += Number(i.qty)||0;
+    }
+  });
+  // Transfer out
+  inventory.filter(i=>i.type==="transfer-out").forEach(i=>{
+    const v=(i.vendor||"").trim(), n=(i.product||"").trim();
+    if(!v||!n) return; ensure(v,n);
+    const from=i.fromBranch||i.branch, to=i.toBranch||"";
+    if(targetBranch===from){
+      vendorMap[v][n].transferredOut += Number(i.qty)||0;
+      if(to){ if(!vendorMap[v][n].sentTo[to]) vendorMap[v][n].sentTo[to]=0; vendorMap[v][n].sentTo[to]+=Number(i.qty)||0; }
+    }
+  });
+  // Transfer in
+  inventory.filter(i=>i.type==="transfer-in" && i.branch===targetBranch).forEach(i=>{
+    const v=(i.vendor||"").trim(), n=(i.product||"").trim();
+    if(!v||!n) return; ensure(v,n);
+    vendorMap[v][n].transferredIn += Number(i.qty)||0;
+    const from=i.fromBranch||"";
+    if(from){ if(!vendorMap[v][n].receivedFrom[from]) vendorMap[v][n].receivedFrom[from]=0; vendorMap[v][n].receivedFrom[from]+=Number(i.qty)||0; }
+  });
+  // Deliveries
+  orders.filter(o=>o.branch===targetBranch && o.status==="Delivered").forEach(o=>{
+    const prods=typeof o.products==="string"?(()=>{try{return JSON.parse(o.products);}catch{return [];}})():(o.products||[]);
+    prods.forEach(p=>{
+      const v=(p.vendor||"").trim(), n=(p.name||"").trim();
+      if(!v||!n||!vendorMap[v]?.[n]) return;
+      vendorMap[v][n].delivered += Number(p.qty)||1;
+    });
+  });
+  return vendorMap;
 }
 
 function BossView({ onLogout }) {
@@ -2262,38 +2338,14 @@ function BossView({ onLogout }) {
             <SectionTitle title="All Branches Inventory"/>
             <input className="k-input" placeholder="🔍 Search vendor or product..." value={bossInvSearch} onChange={e=>setBossInvSearch(e.target.value)} style={{marginBottom:"16px"}}/>
             {BRANCHES.map(b => {
-              // Build vendor→product stock map for this branch
-              const vendorMap = {};
-              inventory.filter(i=>i.branch===b && i.type==="receive").forEach(i=>{
-                const v=(i.vendor||"Unknown").trim(), n=(i.product||"").trim();
-                if (!n) return;
-                if (!vendorMap[v]) vendorMap[v]={};
-                if (!vendorMap[v][n]) vendorMap[v][n]={received:0,delivered:0,returned:0};
-                vendorMap[v][n].received += Number(i.qty)||0;
-              });
-              orders.filter(o=>o.branch===b).forEach(o=>{
-                const prods = typeof o.products==="string"?(()=>{try{return JSON.parse(o.products);}catch{return [];}})():(o.products||[]);
-                prods.forEach(p=>{
-                  const v=(p.vendor||"Unknown").trim(), n=(p.name||"").trim();
-                  if (!n) return;
-                  if (!vendorMap[v]) vendorMap[v]={};
-                  if (!vendorMap[v][n]) vendorMap[v][n]={received:0,delivered:0,returned:0};
-                  vendorMap[v][n].delivered += Number(p.qty)||1;
-                });
-              });
-              inventory.filter(i=>i.branch===b && i.type==="return").forEach(i=>{
-                const v=(i.vendor||"Unknown").trim(), n=(i.product||"").trim();
-                if (!n||!vendorMap[v]||!vendorMap[v][n]) return;
-                vendorMap[v][n].returned += Number(i.qty)||0;
-              });
-
+              // Use same buildStockMap logic as inventory admin
+              const vendorMap = buildBossStockMap(b, inventory, orders);
               const vendorList = Object.keys(vendorMap).filter(v =>
                 !bossInvSearch ||
                 v.toLowerCase().includes(bossInvSearch.toLowerCase()) ||
                 Object.keys(vendorMap[v]).some(p=>p.toLowerCase().includes(bossInvSearch.toLowerCase()))
               ).sort();
               if (vendorList.length===0) return null;
-
               return (
                 <div key={b} style={{marginBottom:"24px"}}>
                   <div style={{background:"var(--navy)",borderRadius:"var(--r)",padding:"10px 16px",marginBottom:"10px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
@@ -2303,7 +2355,12 @@ function BossView({ onLogout }) {
                   {vendorList.map(vendor=>{
                     const products = Object.entries(vendorMap[vendor])
                       .filter(([name])=> !bossInvSearch || vendor.toLowerCase().includes(bossInvSearch.toLowerCase()) || name.toLowerCase().includes(bossInvSearch.toLowerCase()))
-                      .map(([name,s])=>({name,...s,remaining:s.received-s.delivered-s.returned}));
+                      .map(([name,s])=>{
+                        const remaining = b==="IDIMU"
+                          ? s.received - s.returnedTotal - s.transferredOut + s.transferredIn - s.delivered
+                          : s.transferredIn - s.transferredOut - s.delivered;
+                        return {name,...s,remaining};
+                      });
                     return (
                       <div key={vendor} style={{marginBottom:"10px"}}>
                         <p style={{fontSize:"11px",fontWeight:700,color:"var(--blue)",textTransform:"uppercase",letterSpacing:".06em",marginBottom:"6px",paddingLeft:"4px"}}>{vendor}</p>
@@ -2317,7 +2374,10 @@ function BossView({ onLogout }) {
                             }}>
                               <p style={{fontSize:"12px",fontWeight:600,color:item.remaining<=0?"var(--red)":"var(--text)"}}>{item.name}</p>
                               <div style={{display:"flex",gap:"10px",alignItems:"center"}}>
-                                {[["Received",item.received,"var(--green)"],["Delivered",item.delivered,"var(--blue)"],["Returned",item.returned,"var(--amber)"],["Remaining",item.remaining,item.remaining<=0?"var(--red)":"var(--blue)"]].map(([label,val,color])=>(
+                                {b==="IDIMU"
+                                  ? [["Received",item.received,"var(--green)"],["Sent Out",item.transferredOut,"var(--amber)"],["Delivered",item.delivered,"var(--blue)"],["Remaining",item.remaining,item.remaining<=0?"var(--red)":"var(--blue)"]]
+                                  : [["Transferred In",item.transferredIn,"var(--green)"],["Delivered",item.delivered,"var(--blue)"],["Remaining",item.remaining,item.remaining<=0?"var(--red)":"var(--blue)"]]
+                                }.map(([label,val,color])=>(
                                   <div key={label} style={{textAlign:"center",minWidth:"52px"}}>
                                     <p style={{fontSize:"8px",color:"var(--text-faint)",fontWeight:600,marginBottom:"2px"}}>{label}</p>
                                     <p style={{fontFamily:"var(--display)",fontSize:"14px",fontWeight:800,color}}>{val}</p>
