@@ -1220,14 +1220,7 @@ function ManagerView({ branch, onLogout }) {
   const [customDate, setCustomDate] = useState("");
   const [customDateEnd, setCustomDateEnd] = useState("");
   const [showExpForm, setShowExpForm] = useState(false);
-  const [inventory, setInventory]     = useState([]);
-  const [invSubTab, setInvSubTab]     = useState("stock"); // stock | receive | return
-  const [invSearch, setInvSearch]     = useState("");
-  const blankReceive = { date: TODAY, vendor: "", product: "", qty: "" };
-  const blankReturn  = { date: TODAY, product: "", qty: "", note: "" };
-  const [receiveForm, setReceiveForm] = useState({ date: TODAY, vendor: "", product: "", qty: "" });
-  const [returnForm, setReturnForm]   = useState({ date: TODAY, product: "", qty: "", note: "" });
-  const [invSaved, setInvSaved]       = useState("");
+
   const [remitSaved, setRemitSaved] = useState(false);
   const blankExp   = { date: TODAY, description: "", category: "Fuel", amount: "" };
   const blankRemit = { date: TODAY, remittedAmount: "", txID: "", note: "" };
@@ -1238,13 +1231,12 @@ function ManagerView({ branch, onLogout }) {
 
   useEffect(() => {
     setSyncing(true);
-    Promise.all([sheetGet("Orders"), sheetGet("RoadExpenses"), sheetGet("Expenses"), sheetGet("Remittances"), sheetGet("RiderPayments"), sheetGet("Inventory")])
-      .then(([o, re, e, r, rp, inv]) => {
+    Promise.all([sheetGet("Orders"), sheetGet("RoadExpenses"), sheetGet("Expenses"), sheetGet("Remittances"), sheetGet("RiderPayments")])
+      .then(([o, re, e, r, rp]) => {
         setOrders(o.filter(x => x.branch === branch && x.status === "Delivered"));
         setRoadExpenses(re.filter(x => x.branch === branch));
         setExpenses(e.filter(x => x.branch === branch));
         setRemittances(r.filter(x => x.branch === branch));
-        setInventory(inv.filter(x => x.branch === branch));
         const rpMap = {};
         rp.filter(x => x.branch === branch).forEach(x => { rpMap[`${x.rider}-${x.date}`] = x; });
         setRiderPayments(rpMap);
@@ -1366,7 +1358,6 @@ function ManagerView({ branch, onLogout }) {
     { id: "remittance", label: "Rider Remittance" },
     { id: "send",       label: "Send to Boss" },
     { id: "riders",     label: "Riders" },
-    { id: "products",   label: "Products" },
     { id: "expenses",   label: "Expenses" },
   ];
 
@@ -1640,290 +1631,6 @@ function ManagerView({ branch, onLogout }) {
         )}
 
         {/* ── PRODUCTS TAB ── */}
-        {tab === "products" && (
-          <div className="fade-in">
-            {/* Sub-tab switcher */}
-            <div style={{ display:"flex", gap:"8px", marginBottom:"16px" }}>
-              {[["stock","📦 Stock"],["delivered","🚴 Delivered"],["receive","➕ Receive"],["return","↩ Return"]].map(([id,label])=>(
-                <button key={id} onClick={()=>setInvSubTab(id)} style={{
-                  padding:"7px 14px", borderRadius:"var(--r-sm)", fontSize:"12px", fontWeight:600,
-                  border: invSubTab===id ? "2px solid var(--blue)" : "1.5px solid var(--border)",
-                  background: invSubTab===id ? "var(--blue)" : "#fff",
-                  color: invSubTab===id ? "#fff" : "var(--text-dim)", cursor:"pointer"
-                }}>{label}</button>
-              ))}
-            </div>
-
-            {/* ── STOCK OVERVIEW ── */}
-            {invSubTab === "stock" && (() => {
-              // Build stock map using correct type names (waybill-in, transfer-in, etc.)
-              const vendorMap = {};
-              function ensureVM(v,n){
-                if(!vendorMap[v])vendorMap[v]={};
-                if(!vendorMap[v][n])vendorMap[v][n]={received:0,delivered:0,returned:0,transferredIn:0,transferredOut:0};
-              }
-              // Waybill in (IDIMU only) or old "receive" type
-              inventory.filter(i=>(i.type==="waybill-in"||i.type==="receive")).forEach(i=>{
-                const v=(i.vendor||"Unknown").trim(), n=(i.product||"").trim();
-                if(!n) return; ensureVM(v,n);
-                if(branch==="IDIMU") vendorMap[v][n].received += Number(i.qty)||0;
-              });
-              // Transfer in to this branch
-              inventory.filter(i=>i.type==="transfer-in" && i.branch===branch).forEach(i=>{
-                const v=(i.vendor||"").trim(), n=(i.product||"").trim();
-                if(!n) return; ensureVM(v,n);
-                vendorMap[v][n].transferredIn += Number(i.qty)||0;
-              });
-              // Waybill out or old "return" type
-              inventory.filter(i=>(i.type==="waybill-out"||i.type==="return")).forEach(i=>{
-                const v=(i.vendor||"").trim(), n=(i.product||"").trim();
-                if(!n||!vendorMap[v]||!vendorMap[v][n]) return;
-                vendorMap[v][n].returned += Number(i.qty)||0;
-              });
-              // Transfer out from this branch
-              inventory.filter(i=>i.type==="transfer-out" && (i.fromBranch===branch||i.branch===branch)).forEach(i=>{
-                const v=(i.vendor||"").trim(), n=(i.product||"").trim();
-                if(!n||!vendorMap[v]||!vendorMap[v][n]) return;
-                vendorMap[v][n].transferredOut += Number(i.qty)||0;
-              });
-              // Deliveries
-              orders.forEach(o=>{
-                const prods = typeof o.products==="string"?(()=>{try{return JSON.parse(o.products);}catch{return [];}})():(o.products||[]);
-                prods.forEach(p=>{
-                  const v=(p.vendor||"Unknown").trim(), n=(p.name||"").trim();
-                  if(!n) return; ensureVM(v,n);
-                  vendorMap[v][n].delivered += Number(p.qty)||1;
-                });
-              });
-
-              const vendorList = Object.keys(vendorMap).sort();
-              if (vendorList.length===0) return <p style={{textAlign:"center",padding:"48px 0",fontSize:"13px",color:"var(--text-faint)"}}>No inventory yet. Use ➕ Receive to add stock.</p>;
-
-              return (
-                <>
-                  <input className="k-input" placeholder="🔍 Search vendor or product..." value={invSearch||""} onChange={e=>setInvSearch(e.target.value)} style={{marginBottom:"12px"}}/>
-                  {vendorList.filter(v => !invSearch || v.toLowerCase().includes(invSearch.toLowerCase()) || Object.keys(vendorMap[v]).some(p=>p.toLowerCase().includes(invSearch.toLowerCase()))).map(vendor=>{
-                    const products = Object.entries(vendorMap[vendor])
-                      .filter(([name])=> !invSearch || vendor.toLowerCase().includes(invSearch.toLowerCase()) || name.toLowerCase().includes(invSearch.toLowerCase()))
-                      .map(([name,s])=>({name,...s,
-                        remaining: branch==="IDIMU"
-                          ? s.received - s.returned - s.transferredOut + s.transferredIn - s.delivered
-                          : s.transferredIn - s.transferredOut - s.delivered
-                      }));
-                    if (products.length===0) return null;
-                    return (
-                      <div key={vendor} style={{marginBottom:"16px"}}>
-                        <div style={{background:"var(--navy)",borderRadius:"var(--r-sm)",padding:"8px 14px",marginBottom:"8px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                          <p style={{fontFamily:"var(--display)",fontSize:"13px",fontWeight:800,color:"#fff"}}>{vendor}</p>
-                          <span style={{fontSize:"11px",color:"rgba(255,255,255,.5)"}}>{products.length} products</span>
-                        </div>
-                        <div style={{display:"flex",flexDirection:"column",gap:"6px"}}>
-                          {products.map(item=>(
-                            <div key={item.name} style={{
-                              background:item.remaining<=0?"#fef2f2":"#fff",
-                              border:`1.5px solid ${item.remaining<=0?"#fecaca":"var(--border)"}`,
-                              borderRadius:"var(--r-sm)", padding:"10px 14px",
-                              display:"flex", alignItems:"center", justifyContent:"space-between",
-                              boxShadow:"var(--shadow)"
-                            }}>
-                              <p style={{fontSize:"13px",fontWeight:600,color:item.remaining<=0?"var(--red)":"var(--text)"}}>{item.name}</p>
-                              <div style={{display:"flex",gap:"10px",alignItems:"center"}}>
-                                {[["Received",item.received,"var(--green)"],["Delivered",item.delivered,"var(--blue)"],["Returned",item.returned,"var(--amber)"]].map(([label,val,color])=>(
-                                  <div key={label} style={{textAlign:"center",minWidth:"52px"}}>
-                                    <p style={{fontSize:"8px",color:"var(--text-faint)",fontWeight:600,marginBottom:"2px"}}>{label}</p>
-                                    <p style={{fontFamily:"var(--display)",fontSize:"14px",fontWeight:800,color}}>{val}</p>
-                                  </div>
-                                ))}
-                                <div style={{textAlign:"center",background:item.remaining<=0?"#fecaca":"var(--blue-pale)",border:`1px solid ${item.remaining<=0?"#fca5a5":"var(--blue-pale2)"}`,borderRadius:"var(--r-sm)",padding:"6px 14px",minWidth:"60px"}}>
-                                  <p style={{fontSize:"8px",fontWeight:700,color:item.remaining<=0?"var(--red)":"var(--blue)",marginBottom:"2px"}}>Remaining</p>
-                                  <p style={{fontFamily:"var(--display)",fontSize:"18px",fontWeight:800,color:item.remaining<=0?"var(--red)":"var(--blue)",lineHeight:1}}>{item.remaining}</p>
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </>
-              );
-            })()}
-
-            {/* ── OTHER BRANCHES STOCK (read-only) ── */}
-            {invSubTab === "stock" && (() => {
-              const otherBranches = BRANCHES.filter(b => b !== branch);
-              return (
-                <div style={{marginTop:"24px"}}>
-                  <p style={{fontSize:"11px",fontWeight:600,color:"var(--text-faint)",textTransform:"uppercase",letterSpacing:".06em",marginBottom:"10px"}}>Other Branches Stock (Read Only)</p>
-                  {otherBranches.map(ob => (
-                    <details key={ob} style={{marginBottom:"8px"}}>
-                      <summary style={{background:"var(--surface2)",border:"1.5px solid var(--border)",borderRadius:"var(--r-sm)",padding:"10px 14px",cursor:"pointer",fontSize:"13px",fontWeight:600,color:"var(--text-dim)",listStyle:"none",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                        <span>{ob} Branch</span><span style={{fontSize:"11px",color:"var(--text-faint)"}}>tap to expand ▾</span>
-                      </summary>
-                      <div style={{padding:"8px 0"}}>
-                        <p style={{fontSize:"11px",color:"var(--text-faint)",textAlign:"center",padding:"8px"}}>Load {ob} inventory from Sheets to view</p>
-                      </div>
-                    </details>
-                  ))}
-                </div>
-              );
-            })()}
-
-            {/* ── DELIVERED SUMMARY ── */}
-            {invSubTab === "delivered" && (()=>{
-              const productMap = {};
-              fOrders.forEach(o=>{
-                const prods = typeof o.products==="string"?(()=>{try{return JSON.parse(o.products);}catch{return [];}})():(o.products||[]);
-                prods.forEach(p=>{
-                  const name=(p.name||"").trim();
-                  if (!name) return;
-                  if (!productMap[name]) productMap[name]={qty:0,value:0,orders:0};
-                  productMap[name].qty    += Number(p.qty)||1;
-                  productMap[name].value  += (Number(p.price)||0);
-                  productMap[name].orders += 1;
-                });
-              });
-              const products = Object.entries(productMap).sort((a,b)=>b[1].qty-a[1].qty);
-              return (
-                <>
-                  <PeriodFilter mode={mode} setMode={setMode} customDate={customDate} setCustomDate={setCustomDate} customDateEnd={customDateEnd} setCustomDateEnd={setCustomDateEnd}/>
-                  {products.length===0
-                    ? <p style={{textAlign:"center",padding:"48px 0",fontSize:"13px",color:"var(--text-faint)"}}>No delivered products in this period</p>
-                    : <div style={{display:"flex",flexDirection:"column",gap:"8px"}}>
-                        {products.map(([name,stats])=>(
-                          <div key={name} style={{background:"#fff",border:"1.5px solid var(--border)",borderRadius:"var(--r)",padding:"14px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",boxShadow:"var(--shadow)"}}>
-                            <div>
-                              <p style={{fontFamily:"var(--display)",fontSize:"14px",fontWeight:700}}>{name}</p>
-                              <p style={{fontSize:"11px",color:"var(--text-faint)",marginTop:"2px"}}>{stats.orders} order{stats.orders!==1?"s":""}</p>
-                            </div>
-                            <div style={{display:"flex",gap:"16px",alignItems:"center"}}>
-                              <div style={{textAlign:"center"}}>
-                                <p style={{fontSize:"9px",fontWeight:600,color:"var(--text-faint)",textTransform:"uppercase",letterSpacing:".06em",marginBottom:"2px"}}>Units</p>
-                                <p style={{fontFamily:"var(--display)",fontSize:"20px",fontWeight:800,color:"var(--blue)"}}>{stats.qty}</p>
-                              </div>
-                              <div style={{textAlign:"center"}}>
-                                <p style={{fontSize:"9px",fontWeight:600,color:"var(--text-faint)",textTransform:"uppercase",letterSpacing:".06em",marginBottom:"2px"}}>Value</p>
-                                <p style={{fontFamily:"var(--display)",fontSize:"14px",fontWeight:700,color:"var(--text)"}}>{fmt(stats.value)}</p>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                  }
-                </>
-              );
-            })()}
-
-            {/* ── RECEIVE FROM VENDOR ── */}
-            {invSubTab === "receive" && (
-              <Card accent="blue">
-                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"14px"}}>
-                  <p style={{fontSize:"11px",fontWeight:600,color:"var(--blue)",textTransform:"uppercase",letterSpacing:".04em"}}>Receive Stock from Vendor</p>
-                  {invSaved==="receive" && <Tag label="✓ Saved" type="green"/>}
-                </div>
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"12px",marginBottom:"14px"}}>
-                  <div><label className="k-label">Date</label><input type="date" className="k-input" value={receiveForm.date} onChange={e=>setReceiveForm(f=>({...f,date:e.target.value}))}/></div>
-                  <div>
-                    <label className="k-label">Vendor Name</label>
-                    <select className="k-input" value={receiveForm.vendor} onChange={e=>setReceiveForm(f=>({...f,vendor:e.target.value,product:""}))}>
-                      <option value="">Select vendor...</option>
-                      {VENDOR_NAMES.map(v=><option key={v} value={v}>{v}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="k-label">Product Name</label>
-                    <select className="k-input" value={receiveForm.product} onChange={e=>setReceiveForm(f=>({...f,product:e.target.value}))} disabled={!receiveForm.vendor}>
-                      <option value="">Select product...</option>
-                      {receiveForm.vendor && (VENDORS[receiveForm.vendor]||[]).map(p=><option key={p} value={p}>{p}</option>)}
-                    </select>
-                  </div>
-                  <div><label className="k-label">Quantity</label><input type="number" className="k-input" placeholder="0" min="1" value={receiveForm.qty} onChange={e=>setReceiveForm(f=>({...f,qty:e.target.value}))}/></div>
-                </div>
-                <button disabled={!receiveForm.vendor||!receiveForm.product||!receiveForm.qty}
-                  onClick={()=>{
-                    const rec={id:Date.now(),branch,type:"receive",...receiveForm,qty:Number(receiveForm.qty)||0};
-                    setInventory(p=>[rec,...p]);
-                    setReceiveForm({date:TODAY,vendor:"",product:"",qty:""});
-                    setInvSaved("receive"); setTimeout(()=>setInvSaved(""),3000);
-                    sheetAdd("Inventory",rec).catch(()=>{});
-                  }}
-                  style={{width:"100%",padding:"10px",background:!receiveForm.vendor||!receiveForm.product||!receiveForm.qty?"#f1f5f9":"var(--blue)",border:"none",borderRadius:"var(--r-sm)",color:!receiveForm.vendor||!receiveForm.product||!receiveForm.qty?"#94a3b8":"#fff",fontFamily:"var(--display)",fontSize:"13px",fontWeight:700,cursor:!receiveForm.vendor||!receiveForm.product||!receiveForm.qty?"not-allowed":"pointer"}}>
-                  Save Receipt
-                </button>
-                {/* History */}
-                {inventory.filter(i=>i.type==="receive").length>0 && (
-                  <div style={{marginTop:"16px",paddingTop:"12px",borderTop:"1px solid var(--blue-pale2)"}}>
-                    <p style={{fontSize:"10px",fontWeight:600,color:"var(--text-faint)",textTransform:"uppercase",letterSpacing:".06em",marginBottom:"8px"}}>Recent Receipts</p>
-                    {inventory.filter(i=>i.type==="receive").slice(0,10).map(i=>(
-                      <div key={i.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 0",borderBottom:"1px solid var(--border)"}}>
-                        <div>
-                          <span style={{fontSize:"12px",fontWeight:600,color:"var(--text)"}}>{i.product}</span>
-                          <span style={{fontSize:"11px",color:"var(--text-faint)",marginLeft:"8px"}}>from {i.vendor}</span>
-                        </div>
-                        <div style={{display:"flex",gap:"12px",alignItems:"center"}}>
-                          <span style={{fontFamily:"var(--display)",fontSize:"13px",fontWeight:700,color:"var(--green)"}}>+{i.qty}</span>
-                          <span style={{fontSize:"11px",color:"var(--text-faint)"}}>{i.date}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </Card>
-            )}
-
-            {/* ── RETURN TO VENDOR ── */}
-            {invSubTab === "return" && (
-              <Card accent="blue">
-                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"14px"}}>
-                  <p style={{fontSize:"11px",fontWeight:600,color:"var(--blue)",textTransform:"uppercase",letterSpacing:".04em"}}>Return Product to Vendor</p>
-                  {invSaved==="return" && <Tag label="✓ Saved" type="green"/>}
-                </div>
-                {/* Product dropdown from known inventory */}
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"12px",marginBottom:"14px"}}>
-                  <div><label className="k-label">Date</label><input type="date" className="k-input" value={returnForm.date} onChange={e=>setReturnForm(f=>({...f,date:e.target.value}))}/></div>
-                  <div>
-                    <label className="k-label">Product</label>
-                    <input className="k-input" placeholder="e.g. Laptop" value={returnForm.product} onChange={e=>setReturnForm(f=>({...f,product:e.target.value}))} list="inv-products"/>
-                    <datalist id="inv-products">
-                      {[...new Set(inventory.filter(i=>i.type==="receive").map(i=>i.product))].map(p=><option key={p} value={p}/>)}
-                    </datalist>
-                  </div>
-                  <div><label className="k-label">Quantity</label><input type="number" className="k-input" placeholder="0" min="1" value={returnForm.qty} onChange={e=>setReturnForm(f=>({...f,qty:e.target.value}))}/></div>
-                  <div><label className="k-label">Note</label><input className="k-input" placeholder="Reason..." value={returnForm.note} onChange={e=>setReturnForm(f=>({...f,note:e.target.value}))}/></div>
-                </div>
-                <button disabled={!returnForm.product||!returnForm.qty}
-                  onClick={()=>{
-                    const rec={id:Date.now(),branch,type:"return",...returnForm,qty:Number(returnForm.qty)||0};
-                    setInventory(p=>[rec,...p]);
-                    setReturnForm({date:TODAY,product:"",qty:"",note:""});
-                    setInvSaved("return"); setTimeout(()=>setInvSaved(""),3000);
-                    sheetAdd("Inventory",rec).catch(()=>{});
-                  }}
-                  style={{width:"100%",padding:"10px",background:!returnForm.product||!returnForm.qty?"#f1f5f9":"var(--amber)",border:"none",borderRadius:"var(--r-sm)",color:!returnForm.product||!returnForm.qty?"#94a3b8":"#fff",fontFamily:"var(--display)",fontSize:"13px",fontWeight:700,cursor:!returnForm.product||!returnForm.qty?"not-allowed":"pointer"}}>
-                  Log Return
-                </button>
-                {inventory.filter(i=>i.type==="return").length>0 && (
-                  <div style={{marginTop:"16px",paddingTop:"12px",borderTop:"1px solid var(--blue-pale2)"}}>
-                    <p style={{fontSize:"10px",fontWeight:600,color:"var(--text-faint)",textTransform:"uppercase",letterSpacing:".06em",marginBottom:"8px"}}>Recent Returns</p>
-                    {inventory.filter(i=>i.type==="return").slice(0,10).map(i=>(
-                      <div key={i.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 0",borderBottom:"1px solid var(--border)"}}>
-                        <div>
-                          <span style={{fontSize:"12px",fontWeight:600,color:"var(--text)"}}>{i.product}</span>
-                          {i.note&&<span style={{fontSize:"11px",color:"var(--text-faint)",marginLeft:"8px"}}>· {i.note}</span>}
-                        </div>
-                        <div style={{display:"flex",gap:"12px",alignItems:"center"}}>
-                          <span style={{fontFamily:"var(--display)",fontSize:"13px",fontWeight:700,color:"var(--amber)"}}>-{i.qty}</span>
-                          <span style={{fontSize:"11px",color:"var(--text-faint)"}}>{i.date}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </Card>
-            )}
-          </div>
-        )}
-
         {/* ── EXPENSES TAB ── */}
         {tab === "expenses" && (
           <div className="fade-in">
@@ -2046,7 +1753,8 @@ function BossView({ onLogout }) {
   useEffect(() => {
     setSyncing(true);
     Promise.all([sheetGet("Orders"),sheetGet("Expenses"),sheetGet("Remittances"),sheetGet("RiderPayments"),sheetGet("RoadExpenses"),sheetGet("Inventory")])
-      .then(([o,e,r,rp,re,inv]) => { setOrders(o); setExpenses(e); setRemittances(r); setRiderPayments(rp); setInventory(inv); })
+      .then(([o,e,r,rp,re,inv]) => { setOrders(o); setExpenses(e); setRemittances(r); setRiderPayments(rp); setInventory(inv);
+        console.log("Inventory loaded:", inv.length, "records"); })
       .catch(()=>{}).finally(()=>setSyncing(false));
   }, []);
 
