@@ -715,18 +715,21 @@ function RiderManagerView({ branch, onLogout }) {
   const [syncing, setSyncing]   = useState(true);
   const [saved, setSaved]       = useState(false);
   const [mode, setMode]         = useState("today");
-  const [customDate, setCustomDate] = useState("");
+  const [customDate, setCustomDate]       = useState("");
   const [customDateEnd, setCustomDateEnd] = useState("");
 
-  // ── Order form state ──
+  // ── Order form state (no rider) ──
   const blankProduct = { vendor: VENDOR_NAMES[0], name: "", qty: 1, price: "" };
-  const blankOrder   = { date: TODAY, rider: RIDERS[branch][0], customerName: "", address: "", products: [{ ...blankProduct }] };
+  const blankOrder   = { date: TODAY, customerName: "", address: "", products: [{ ...blankProduct }] };
   const [form, setForm]         = useState(blankOrder);
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState(null);
 
+  // ── Assign state ──
+  const [assignRider, setAssignRider] = useState({}); // { orderId: riderName }
+
   // ── Road expense per rider per day ──
-  const [roadExpenses, setRoadExpenses] = useState({}); // { riderId: { rider, date, amount, note } }
+  const [roadExpenses, setRoadExpenses] = useState({});
   const [roadForm, setRoadForm] = useState({ rider: RIDERS[branch][0], date: TODAY, amount: "", note: "" });
   const [roadSaved, setRoadSaved] = useState(false);
 
@@ -741,30 +744,25 @@ function RiderManagerView({ branch, onLogout }) {
       }).catch(() => {}).finally(() => setSyncing(false));
   }, [branch]);
 
-  // ── Add product line to form ──
-  function addProduct() {
-    setForm(f => ({ ...f, products: [...f.products, { ...blankProduct }] }));
-  }
-  function removeProduct(i) {
-    setForm(f => ({ ...f, products: f.products.filter((_, idx) => idx !== i) }));
-  }
+  function addProduct() { setForm(f => ({ ...f, products: [...f.products, { ...blankProduct }] })); }
+  function removeProduct(i) { setForm(f => ({ ...f, products: f.products.filter((_, idx) => idx !== i) })); }
   function setProduct(i, k, v) {
     setForm(f => ({ ...f, products: f.products.map((p, idx) => {
       if (idx !== i) return p;
-      // If vendor changes, reset product name
       if (k === "vendor") return { ...p, vendor: v, name: "" };
       return { ...p, [k]: v };
     }) }));
   }
 
-  // ── Submit new order ──
+  // ── Submit new order (no rider — goes to Unassigned) ──
   function handleSubmit() {
-    if (!form.customerName || !form.rider || form.products.some(p => !p.name || !p.price)) return;
+    if (!form.customerName || form.products.some(p => !p.name || !p.price)) return;
     const newOrder = {
       ...form,
       id: Date.now(),
       branch,
-      status: "Pending",
+      rider: "",          // no rider yet
+      status: "Unassigned",
       products: form.products.map(p => ({ ...p, qty: Number(p.qty) || 1, price: Number(p.price) || 0 })),
       totalPrice: form.products.reduce((s, p) => s + (Number(p.price) || 0), 0),
       riderRemitted: false,
@@ -775,15 +773,27 @@ function RiderManagerView({ branch, onLogout }) {
     sheetAdd("Orders", { ...newOrder, products: JSON.stringify(newOrder.products) }).catch(() => {});
   }
 
-  // ── Mark order delivered ──
+  // ── Assign rider to order ──
+  function assignOrder(orderId) {
+    const rider = assignRider[orderId];
+    if (!rider) return;
+    const updated = orders.map(o => String(o.id) === String(orderId)
+      ? { ...o, rider, status: "Pending" }
+      : o
+    );
+    setOrders(updated);
+    setAssignRider(p => ({ ...p, [orderId]: "" }));
+    const order = updated.find(o => String(o.id) === String(orderId));
+    if (order) sheetUpdate("Orders", { ...order, products: JSON.stringify(order.products || []) }).catch(() => {});
+  }
+
+  // ── Mark delivered ──
   function markDelivered(id) {
     const order = orders.find(o => String(o.id) === String(id));
     if (!order) return;
-    // Parse products if string
     const products = typeof order.products === "string" ? JSON.parse(order.products) : (order.products || []);
-    const totalPrice = products.reduce((s, p) => s + (Number(p.price) || 0), 0);
     setEditingId(id);
-    setEditForm({ ...order, products, totalPrice, roadExpense: "", expenseNote: "" });
+    setEditForm({ ...order, products, roadExpense: "", expenseNote: "" });
   }
 
   function submitDelivered() {
@@ -792,10 +802,9 @@ function RiderManagerView({ branch, onLogout }) {
     const totalPrice = products.reduce((s, p) => s + Number(p.price) || 0, 0);
     const updated   = { ...editForm, products, totalPrice, status: "Delivered" };
     setOrders(p => p.map(o => String(o.id) === String(editForm.id) ? updated : o));
-    // Save road expense if entered
     if (editForm.roadExpense) {
       const reKey = `${editForm.rider}-${editForm.date}`;
-      const re    = { id: Date.now(), branch, rider: editForm.rider, date: editForm.date, amount: Number(editForm.roadExpense) || 0, note: editForm.expenseNote || "" };
+      const re = { id: Date.now(), branch, rider: editForm.rider, date: editForm.date, amount: Number(editForm.roadExpense) || 0, note: editForm.expenseNote || "" };
       setRoadExpenses(p => ({ ...p, [reKey]: re }));
       sheetAdd("RoadExpenses", re).catch(() => {});
     }
@@ -813,21 +822,28 @@ function RiderManagerView({ branch, onLogout }) {
   function saveRoadExpense() {
     if (!roadForm.amount) return;
     const reKey = `${roadForm.rider}-${roadForm.date}`;
-    const re    = { id: Date.now(), branch, rider: roadForm.rider, date: roadForm.date, amount: Number(roadForm.amount) || 0, note: roadForm.note || "" };
+    const re = { id: Date.now(), branch, rider: roadForm.rider, date: roadForm.date, amount: Number(roadForm.amount) || 0, note: roadForm.note || "" };
     setRoadExpenses(p => ({ ...p, [reKey]: re }));
     setRoadForm({ rider: RIDERS[branch][0], date: TODAY, amount: "", note: "" });
     setRoadSaved(true); setTimeout(() => setRoadSaved(false), 3000);
     sheetAdd("RoadExpenses", re).catch(() => {});
   }
 
-  const filtered   = filterByPeriod(orders, mode, customDate, customDateEnd);
-  const pending    = filtered.filter(o => o.status === "Pending");
-  const delivered  = filtered.filter(o => o.status === "Delivered");
-  const failed     = filtered.filter(o => o.status === "Failed");
-  const period     = getBonusPeriod();
-  const TABS = [{ id: "log", label: "Log Orders" }, { id: "update", label: "Update Orders" }, { id: "riders", label: "Riders" }];
+  const todayOrders  = filterByPeriod(orders, "today", "");
+  const unassigned   = todayOrders.filter(o => o.status === "Unassigned");
+  const filtered     = filterByPeriod(orders, mode, customDate, customDateEnd);
+  const pending      = filtered.filter(o => o.status === "Pending");
+  const delivered    = filtered.filter(o => o.status === "Delivered");
+  const failed       = filtered.filter(o => o.status === "Failed");
+  const period       = getBonusPeriod();
 
-  // parse products helper
+  const TABS = [
+    { id: "log",    label: "Log Orders" },
+    { id: "assign", label: unassigned.length > 0 ? `Assign (${unassigned.length} ⚠)` : "Assign" },
+    { id: "update", label: "Update Orders" },
+    { id: "riders", label: "Riders" },
+  ];
+
   function getProducts(order) {
     if (!order.products) return [];
     if (typeof order.products === "string") { try { return JSON.parse(order.products); } catch { return []; } }
@@ -848,18 +864,10 @@ function RiderManagerView({ branch, onLogout }) {
               {saved && <Tag label="✓ Saved" type="green" />}
             </div>
             <Card>
-              {/* Rider + Date */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "16px" }}>
-                <div>
-                  <label className="k-label">Rider</label>
-                  <select value={form.rider} onChange={e => setForm(f => ({ ...f, rider: e.target.value }))} className="k-input" style={{ fontWeight: 600, borderColor: "var(--blue)" }}>
-                    {RIDERS[branch].map(r => <option key={r}>{r}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="k-label">Date</label>
-                  <input type="date" className="k-input" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} />
-                </div>
+              {/* Date */}
+              <div style={{ marginBottom: "16px" }}>
+                <label className="k-label">Date</label>
+                <input type="date" className="k-input" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} />
               </div>
 
               {/* Customer details */}
@@ -883,30 +891,30 @@ function RiderManagerView({ branch, onLogout }) {
                 <button onClick={addProduct} style={{ background: "var(--blue-pale)", border: "1.5px solid var(--blue-pale2)", color: "var(--blue)", borderRadius: "var(--r-sm)", padding: "4px 12px", fontSize: "11px", fontWeight: 700, cursor: "pointer" }}>+ Add Product</button>
               </div>
               {form.products.map((p, i) => (
-                <div key={i} style={{ background:"var(--surface2)", border:"1px solid var(--border)", borderRadius:"var(--r-sm)", padding:"10px", marginBottom:"10px" }}>
-                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"8px" }}>
-                    <span style={{ fontSize:"11px", fontWeight:600, color:"var(--text-dim)" }}>Item {i+1}</span>
+                <div key={i} style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--r-sm)", padding: "10px", marginBottom: "10px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                    <span style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-dim)" }}>Item {i + 1}</span>
                     {form.products.length > 1 && (
-                      <button onClick={() => removeProduct(i)} style={{ background:"#fef2f2", border:"1.5px solid #fecaca", borderRadius:"var(--r-sm)", color:"var(--red)", fontSize:"11px", fontWeight:600, cursor:"pointer", padding:"2px 8px" }}>Remove</button>
+                      <button onClick={() => removeProduct(i)} style={{ background: "#fef2f2", border: "1.5px solid #fecaca", borderRadius: "var(--r-sm)", color: "var(--red)", fontSize: "11px", fontWeight: 600, cursor: "pointer", padding: "2px 8px" }}>Remove</button>
                     )}
                   </div>
-                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"8px", marginBottom:"8px" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginBottom: "8px" }}>
                     <div>
                       <label className="k-label">Vendor</label>
-                      <select className="k-input" value={p.vendor||""} onChange={e => setProduct(i, "vendor", e.target.value)}>
+                      <select className="k-input" value={p.vendor || ""} onChange={e => setProduct(i, "vendor", e.target.value)}>
                         <option value="">Select vendor...</option>
                         {VENDOR_NAMES.map(v => <option key={v} value={v}>{v}</option>)}
                       </select>
                     </div>
                     <div>
                       <label className="k-label">Product</label>
-                      <select className="k-input" value={p.name||""} onChange={e => setProduct(i, "name", e.target.value)} disabled={!p.vendor}>
+                      <select className="k-input" value={p.name || ""} onChange={e => setProduct(i, "name", e.target.value)} disabled={!p.vendor}>
                         <option value="">Select product...</option>
-                        {p.vendor && (VENDORS[p.vendor]||[]).map(n => <option key={n} value={n}>{n}</option>)}
+                        {p.vendor && (VENDORS[p.vendor] || []).map(n => <option key={n} value={n}>{n}</option>)}
                       </select>
                     </div>
                   </div>
-                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"8px" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
                     <div>
                       <label className="k-label">Qty</label>
                       <input type="number" className="k-input" min="1" value={p.qty} onChange={e => setProduct(i, "qty", e.target.value)} />
@@ -942,15 +950,72 @@ function RiderManagerView({ branch, onLogout }) {
                 }}>Save Order →</button>
             </Card>
 
-            {/* Recent orders */}
-            {filterByPeriod(orders, "today", "").filter(o => o.status === "Pending").length > 0 && (
-              <div style={{ marginTop: "20px" }}>
-                <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-faint)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: "10px" }}>Today's Pending Orders ({filterByPeriod(orders, "today", "").filter(o => o.status === "Pending").length})</p>
-                <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                  {filterByPeriod(orders, "today", "").filter(o => o.status === "Pending").map(o => (
-                    <MiniOrderCard key={o.id} order={o} getProducts={getProducts} />
-                  ))}
+            {/* Today's unassigned count */}
+            {unassigned.length > 0 && (
+              <div className="pulse-anim" style={{ marginTop: "16px", background: "#fef2f2", border: "1.5px solid #fecaca", borderRadius: "var(--r)", padding: "12px 16px", display: "flex", alignItems: "center", gap: "10px" }}>
+                <span style={{ fontSize: "20px" }}>⚠️</span>
+                <div>
+                  <p style={{ fontSize: "13px", fontWeight: 600, color: "var(--red)" }}>{unassigned.length} order{unassigned.length !== 1 ? "s" : ""} not yet assigned to a rider</p>
+                  <p style={{ fontSize: "11px", color: "#f87171", marginTop: "2px" }}>Go to the Assign tab to assign them</p>
                 </div>
+                <button onClick={() => setTab("assign")} style={{ marginLeft: "auto", padding: "6px 14px", background: "var(--red)", border: "none", borderRadius: "var(--r-sm)", color: "#fff", fontSize: "12px", fontWeight: 700, cursor: "pointer" }}>Assign →</button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── ASSIGN TAB ── */}
+        {tab === "assign" && (
+          <div className="fade-in">
+            <SectionTitle title="Assign Orders" sub="Select a rider for each unassigned order" />
+            {unassigned.length === 0 ? (
+              <div style={{ background: "#ecfdf5", border: "1.5px solid #a7f3d0", borderRadius: "var(--r)", padding: "20px", textAlign: "center" }}>
+                <p style={{ fontSize: "14px", fontWeight: 600, color: "var(--green)" }}>✓ All orders assigned</p>
+                <p style={{ fontSize: "12px", color: "var(--text-faint)", marginTop: "4px" }}>No unassigned orders for today</p>
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                {unassigned.map(o => (
+                  <div key={o.id} style={{ background: "#fff", border: "1.5px solid #fecaca", borderRadius: "var(--r)", padding: "14px 16px", boxShadow: "var(--shadow)" }}>
+                    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "10px" }}>
+                      <div>
+                        <p style={{ fontSize: "13px", fontWeight: 700 }}>{o.customerName}</p>
+                        <p style={{ fontSize: "11px", color: "var(--text-faint)", marginTop: "2px" }}>{o.address} · {o.date}</p>
+                        <div style={{ marginTop: "6px" }}>
+                          {getProducts(o).map((p, i) => (
+                            <span key={i} style={{ fontSize: "11px", color: "var(--text-dim)", marginRight: "10px" }}>🏷 {p.name} ×{p.qty} — {fmt(p.price)}</span>
+                          ))}
+                        </div>
+                      </div>
+                      <span style={{ fontFamily: "var(--display)", fontSize: "14px", fontWeight: 700, color: "var(--blue)", marginLeft: "12px", flexShrink: 0 }}>
+                        {fmt(getProducts(o).reduce((s, p) => s + (Number(p.price) || 0), 0))}
+                      </span>
+                    </div>
+                    <div style={{ display: "flex", gap: "8px", alignItems: "center", paddingTop: "10px", borderTop: "1px solid var(--border)" }}>
+                      <select
+                        value={assignRider[o.id] || ""}
+                        onChange={e => setAssignRider(p => ({ ...p, [o.id]: e.target.value }))}
+                        className="k-input"
+                        style={{ flex: 1, fontWeight: 600 }}>
+                        <option value="">Select rider...</option>
+                        {RIDERS[branch].map(r => <option key={r} value={r}>{r}</option>)}
+                      </select>
+                      <button
+                        onClick={() => assignOrder(o.id)}
+                        disabled={!assignRider[o.id]}
+                        style={{
+                          padding: "9px 20px", background: !assignRider[o.id] ? "#f1f5f9" : "var(--green)",
+                          border: "none", borderRadius: "var(--r-sm)",
+                          color: !assignRider[o.id] ? "#94a3b8" : "#fff",
+                          fontFamily: "var(--display)", fontSize: "12px", fontWeight: 700,
+                          cursor: !assignRider[o.id] ? "not-allowed" : "pointer",
+                          whiteSpace: "nowrap"
+                        }}>
+                        Assign →
+                      </button>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </div>
@@ -960,7 +1025,7 @@ function RiderManagerView({ branch, onLogout }) {
         {tab === "update" && (
           <div className="fade-in">
             <SectionTitle title="Update Orders" sub="Mark delivered or failed, add road expenses" />
-            <PeriodFilter mode={mode} setMode={setMode} customDate={customDate} setCustomDate={setCustomDate} />
+            <PeriodFilter mode={mode} setMode={setMode} customDate={customDate} setCustomDate={setCustomDate} customDateEnd={customDateEnd} setCustomDateEnd={setCustomDateEnd} />
 
             {/* Road expense section */}
             <Card accent="blue" style={{ marginBottom: "16px" }}>
@@ -991,7 +1056,6 @@ function RiderManagerView({ branch, onLogout }) {
               <button onClick={saveRoadExpense} disabled={!roadForm.amount} style={{ width: "100%", padding: "9px", background: !roadForm.amount ? "#f1f5f9" : "var(--blue)", border: "none", borderRadius: "var(--r-sm)", color: !roadForm.amount ? "#94a3b8" : "#fff", fontFamily: "var(--display)", fontSize: "12px", fontWeight: 700, cursor: !roadForm.amount ? "not-allowed" : "pointer" }}>
                 Save Road Expense
               </button>
-              {/* Show today's road expenses */}
               {Object.values(roadExpenses).filter(r => r.date === TODAY).length > 0 && (
                 <div style={{ marginTop: "10px", paddingTop: "10px", borderTop: "1px solid var(--blue-pale2)" }}>
                   {Object.values(roadExpenses).filter(r => r.date === TODAY).map(r => (
@@ -1010,42 +1074,43 @@ function RiderManagerView({ branch, onLogout }) {
                 <div className="slide-down" style={{ background: "#fff", borderRadius: "var(--r-lg)", padding: "24px", width: "100%", maxWidth: "500px", maxHeight: "90vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,.3)" }}>
                   <p style={{ fontFamily: "var(--display)", fontSize: "15px", fontWeight: 800, marginBottom: "4px" }}>Mark as Delivered</p>
                   <p style={{ fontSize: "12px", color: "var(--text-faint)", marginBottom: "16px" }}>{editForm.customerName} · {editForm.rider}</p>
-
                   <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: "10px" }}>Edit Products</p>
                   {editForm.products.map((p, i) => (
-                    <div key={i} style={{ background:"var(--surface2)", border:"1px solid var(--border)", borderRadius:"var(--r-sm)", padding:"10px", marginBottom:"8px" }}>
-                      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"8px", marginBottom:"8px" }}>
+                    <div key={i} style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--r-sm)", padding: "10px", marginBottom: "8px" }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginBottom: "8px" }}>
                         <div>
                           <label className="k-label">Vendor</label>
-                          <select className="k-input" value={p.vendor||""} onChange={e => setEditForm(f => ({ ...f, products: f.products.map((pp,ii) => ii===i ? {...pp, vendor:e.target.value, name:""} : pp) }))}>
+                          <select className="k-input" value={p.vendor || ""} onChange={e => setEditForm(f => ({ ...f, products: f.products.map((pp, ii) => ii === i ? { ...pp, vendor: e.target.value, name: "" } : pp) }))}>
                             <option value="">Select vendor...</option>
                             {VENDOR_NAMES.map(v => <option key={v} value={v}>{v}</option>)}
                           </select>
                         </div>
                         <div>
                           <label className="k-label">Product</label>
-                          <select className="k-input" value={p.name||""} onChange={e => setEditForm(f => ({ ...f, products: f.products.map((pp,ii) => ii===i ? {...pp, name:e.target.value} : pp) }))} disabled={!p.vendor}>
+                          <select className="k-input" value={p.name || ""} onChange={e => setEditForm(f => ({ ...f, products: f.products.map((pp, ii) => ii === i ? { ...pp, name: e.target.value } : pp) }))} disabled={!p.vendor}>
                             <option value="">Select product...</option>
-                            {p.vendor && (VENDORS[p.vendor]||[]).map(n => <option key={n} value={n}>{n}</option>)}
+                            {p.vendor && (VENDORS[p.vendor] || []).map(n => <option key={n} value={n}>{n}</option>)}
                           </select>
                         </div>
                       </div>
-                      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"8px" }}>
-                        <div><label className="k-label">Qty</label><input type="number" className="k-input" min="1" value={p.qty} onChange={e => setEditForm(f => ({ ...f, products: f.products.map((pp,ii) => ii===i ? {...pp, qty:e.target.value} : pp) }))}/></div>
-                        <div><label className="k-label">Price (₦)</label><input type="number" className="k-input" placeholder="Price" value={p.price} onChange={e => setEditForm(f => ({ ...f, products: f.products.map((pp,ii) => ii===i ? {...pp, price:e.target.value} : pp) }))}/></div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+                        <div><label className="k-label">Qty</label><input type="number" className="k-input" min="1" value={p.qty} onChange={e => setEditForm(f => ({ ...f, products: f.products.map((pp, ii) => ii === i ? { ...pp, qty: e.target.value } : pp) }))}/></div>
+                        <div><label className="k-label">Price (₦)</label><input type="number" className="k-input" placeholder="Price" value={p.price} onChange={e => setEditForm(f => ({ ...f, products: f.products.map((pp, ii) => ii === i ? { ...pp, price: e.target.value } : pp) }))}/></div>
                       </div>
                     </div>
                   ))}
-
                   <div style={{ background: "var(--blue-pale)", border: "1.5px solid var(--blue-pale2)", borderRadius: "var(--r-sm)", padding: "10px 14px", marginBottom: "14px", display: "flex", justifyContent: "space-between" }}>
                     <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-dim)" }}>Total</span>
                     <span style={{ fontFamily: "var(--display)", fontSize: "14px", fontWeight: 800, color: "var(--blue)" }}>
                       {fmt(editForm.products.reduce((s, p) => s + (Number(p.price) || 0), 0))}
                     </span>
                   </div>
-
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginBottom: "12px" }}>
+                    <div><label className="k-label">Road Expense (₦)</label><input type="number" className="k-input" placeholder="0" value={editForm.roadExpense} onChange={e => setEditForm(f => ({ ...f, roadExpense: e.target.value }))}/></div>
+                    <div><label className="k-label">Expense Note</label><input className="k-input" placeholder="Fuel, toll..." value={editForm.expenseNote} onChange={e => setEditForm(f => ({ ...f, expenseNote: e.target.value }))}/></div>
+                  </div>
                   <div style={{ display: "flex", gap: "8px" }}>
-                    <button onClick={submitDelivered} style={{ flex: 1, padding: "10px", background: "var(--green)", border: "none", borderRadius: "var(--r-sm)", color: "#fff", fontFamily: "var(--display)", fontSize: "13px", fontWeight: 700, cursor: "pointer", boxShadow: "0 2px 8px rgba(5,150,105,.25)" }}>✓ Confirm Delivered</button>
+                    <button onClick={submitDelivered} style={{ flex: 1, padding: "10px", background: "var(--green)", border: "none", borderRadius: "var(--r-sm)", color: "#fff", fontFamily: "var(--display)", fontSize: "13px", fontWeight: 700, cursor: "pointer" }}>✓ Confirm Delivered</button>
                     <button onClick={() => { setEditingId(null); setEditForm(null); }} style={{ padding: "10px 16px", background: "#fff", border: "1.5px solid var(--border)", borderRadius: "var(--r-sm)", color: "var(--text-dim)", fontSize: "12px", cursor: "pointer" }}>Cancel</button>
                   </div>
                 </div>
@@ -1065,7 +1130,7 @@ function RiderManagerView({ branch, onLogout }) {
                           <p style={{ fontSize: "11px", color: "var(--text-faint)", marginTop: "2px" }}>{o.address} · {o.rider} · {o.date}</p>
                           <div style={{ marginTop: "6px" }}>
                             {getProducts(o).map((p, i) => (
-                              <span key={i} style={{ fontSize: "11px", color: "var(--text-dim)", marginRight: "10px" }}>🏷 {p.name} ×{p.qty} — {fmt(Number(p.price) || 0)}</span>
+                              <span key={i} style={{ fontSize: "11px", color: "var(--text-dim)", marginRight: "10px" }}>🏷 {p.name} ×{p.qty} — {fmt(p.price)}</span>
                             ))}
                           </div>
                         </div>
@@ -1089,14 +1154,14 @@ function RiderManagerView({ branch, onLogout }) {
                 <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--green)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: "8px" }}>✓ Delivered ({delivered.length})</p>
                 <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: "20px" }}>
                   {delivered.map(o => (
-                    <div key={o.id} style={{ background: "#ecfdf5", border: "1.5px solid #a7f3d0", borderRadius: "var(--r)", padding: "12px 14px", boxShadow: "var(--shadow)" }}>
+                    <div key={o.id} style={{ background: "#ecfdf5", border: "1.5px solid #a7f3d0", borderRadius: "var(--r)", padding: "12px 14px" }}>
                       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
                         <div>
                           <p style={{ fontSize: "13px", fontWeight: 600 }}>{o.customerName}</p>
                           <p style={{ fontSize: "11px", color: "var(--text-faint)", marginTop: "2px" }}>{o.address} · {o.rider} · {o.date}</p>
                           <div style={{ marginTop: "6px" }}>
                             {getProducts(o).map((p, i) => (
-                              <span key={i} style={{ fontSize: "11px", color: "var(--text-dim)", marginRight: "10px" }}>🏷 {p.name} ×{p.qty} — {fmt(Number(p.price) || 0)}</span>
+                              <span key={i} style={{ fontSize: "11px", color: "var(--text-dim)", marginRight: "10px" }}>🏷 {p.name} ×{p.qty} — {fmt(p.price)}</span>
                             ))}
                           </div>
                         </div>
@@ -1113,7 +1178,7 @@ function RiderManagerView({ branch, onLogout }) {
             {/* Failed orders */}
             {failed.length > 0 && (
               <>
-                <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-faint)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: "8px" }}>✕ Failed ({failed.length}) — Not counted</p>
+                <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-faint)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: "8px" }}>✕ Failed ({failed.length})</p>
                 <div style={{ display: "flex", flexDirection: "column", gap: "8px", opacity: .5 }}>
                   {failed.map(o => (
                     <div key={o.id} style={{ background: "#fff", border: "1.5px solid var(--border)", borderRadius: "var(--r)", padding: "10px 14px" }}>
@@ -1142,10 +1207,10 @@ function RiderManagerView({ branch, onLogout }) {
               </div>
               <Tag label="15th → 14th" type="navy" />
             </div>
-            <PeriodFilter mode={mode} setMode={setMode} customDate={customDate} setCustomDate={setCustomDate} />
+            <PeriodFilter mode={mode} setMode={setMode} customDate={customDate} setCustomDate={setCustomDate} customDateEnd={customDateEnd} setCustomDateEnd={setCustomDateEnd} />
             <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
               {RIDERS[branch].map(name => {
-                const rOrders = filterByPeriod(orders.filter(o => o.rider === name && o.status === "Delivered"), mode, customDate);
+                const rOrders = filterByPeriod(orders.filter(o => o.rider === name && o.status === "Delivered"), mode, customDate, customDateEnd);
                 const totalValue = rOrders.reduce((s, o) => s + (getProducts(o).reduce((ss, p) => ss + (Number(p.price) || 0), 0)), 0);
                 const totalQty   = rOrders.reduce((s, o) => s + getProducts(o).reduce((ss, p) => ss + (Number(p.qty) || 1), 0), 0);
                 const reKey      = `${name}-${TODAY}`;
@@ -1163,7 +1228,7 @@ function RiderManagerView({ branch, onLogout }) {
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "8px" }}>
                       {[
                         ["Orders", rOrders.length, "var(--text)"],
-                        ["Items Delivered", totalQty, "var(--blue)"],
+                        ["Items", totalQty, "var(--blue)"],
                         ["Total Value", fmt(totalValue), "var(--text)"],
                       ].map(([label, val, color]) => (
                         <div key={label} style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--r-sm)", padding: "8px", textAlign: "center" }}>
@@ -1181,23 +1246,6 @@ function RiderManagerView({ branch, onLogout }) {
             </div>
           </div>
         )}
-      </div>
-    </div>
-  );
-}
-
-// ─── MINI ORDER CARD ──────────────────────────────────────────────────────────
-function MiniOrderCard({ order, getProducts }) {
-  const products = getProducts(order);
-  const total    = products.reduce((s, p) => s + (Number(p.price) || 0), 0);
-  return (
-    <div style={{ background: "#fff", border: "1.5px solid var(--border)", borderRadius: "var(--r)", padding: "10px 14px", boxShadow: "var(--shadow)" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-        <div>
-          <p style={{ fontSize: "13px", fontWeight: 600 }}>{order.customerName}</p>
-          <p style={{ fontSize: "11px", color: "var(--text-faint)", marginTop: "2px" }}>{order.rider} · {order.address}</p>
-        </div>
-        <span style={{ fontFamily: "var(--display)", fontSize: "13px", fontWeight: 700, color: "var(--blue)" }}>{fmt(total)}</span>
       </div>
     </div>
   );
