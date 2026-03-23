@@ -1746,15 +1746,11 @@ function buildBossStockMap(targetBranch, inventory, orders) {
     if(!v||!n) return; ensure(v,n);
     if(targetBranch==="IDIMU") vendorMap[v][n].received += Number(i.qty)||0;
   });
-  // Waybill out
-  inventory.filter(i=>i.type==="waybill-out").forEach(i=>{
-    const v=(i.vendor||"").trim(), n=(i.product||"").trim(), b=i.branch||"IDIMU";
+  // Waybill out — returned TO vendor (only affects IDIMU stock)
+  inventory.filter(i=>i.type==="waybill-out" && i.branch==="IDIMU").forEach(i=>{
+    const v=(i.vendor||"").trim(), n=(i.product||"").trim();
     if(!v||!n) return; ensure(v,n);
-    if(targetBranch===b){
-      vendorMap[v][n].returnedTotal += Number(i.qty)||0;
-      if(!vendorMap[v][n].returnedFrom[b]) vendorMap[v][n].returnedFrom[b]=0;
-      vendorMap[v][n].returnedFrom[b] += Number(i.qty)||0;
-    }
+    if(targetBranch==="IDIMU") vendorMap[v][n].returnedTotal += Number(i.qty)||0;
   });
   // Transfer out
   inventory.filter(i=>i.type==="transfer-out").forEach(i=>{
@@ -2282,16 +2278,12 @@ function InventoryAdminView({ branch, onLogout }) {
       if (targetBranch === "IDIMU") vendorMap[v][n].received += Number(i.qty)||0;
     });
 
-    // Waybill out (returned to vendor) — track who returned
-    inv.filter(i => i.type === "waybill-out").forEach(i => {
-      const v=(i.vendor||"").trim(), n=(i.product||"").trim(), b=i.branch||"IDIMU";
+    // Waybill out — returned TO vendor (only IDIMU sends back to vendor)
+    inv.filter(i => i.type === "waybill-out" && i.branch === "IDIMU").forEach(i => {
+      const v=(i.vendor||"").trim(), n=(i.product||"").trim();
       if (!v||!n) return;
       ensure(v, n);
-      if (targetBranch === b) {
-        vendorMap[v][n].returnedTotal += Number(i.qty)||0;
-        if (!vendorMap[v][n].returnedFrom[b]) vendorMap[v][n].returnedFrom[b] = 0;
-        vendorMap[v][n].returnedFrom[b] += Number(i.qty)||0;
-      }
+      if (targetBranch === "IDIMU") vendorMap[v][n].returnedTotal += Number(i.qty)||0;
     });
 
     // Transfer out — any branch sending to another (deduct from sender)
@@ -2421,13 +2413,8 @@ function InventoryAdminView({ branch, onLogout }) {
                                     ))}
                                   </div>
                                   <div style={{ background:"var(--surface2)", border:"1px solid var(--border)", borderRadius:"var(--r-sm)", padding:"8px" }}>
-                                    <p style={{ fontSize:"10px", color:"var(--text-dim)", fontWeight:700, marginBottom:"4px" }}>Returned — {item.returnedTotal}</p>
-                                    {Object.entries(item.returnedFrom||{}).map(([br, qty]) => (
-                                      <div key={br} style={{ display:"flex", justifyContent:"space-between" }}>
-                                        <span style={{ fontSize:"12px", color:"var(--text-dim)", fontWeight:600 }}>{br}</span>
-                                        <span style={{ fontSize:"12px", fontWeight:800, color:"var(--text-dim)" }}>{qty}</span>
-                                      </div>
-                                    ))}
+                                    <p style={{ fontSize:"10px", color:"var(--text-faint)", fontWeight:600, marginBottom:"4px" }}>Returned to Vendor</p>
+                                    <p style={{ fontFamily:"var(--display)", fontSize:"18px", fontWeight:800, color:"var(--text-dim)" }}>{item.returnedTotal}</p>
                                   </div>
                                 </div>
                               ) : (
