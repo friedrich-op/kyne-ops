@@ -243,6 +243,7 @@ const USERS = [
   { username: "ketu manager",  password: "ketukyne@2023",   role: "manager",       branch: "KETU"  },
   { username: "idimu rider",   password: "idimurider@2021", role: "rider-manager", branch: "IDIMU" },
   { username: "idimu inventory", password: "idimyinv@2024",  role: "inventory-admin", branch: "IDIMU" },
+  { username: "idimu stock",     password: "idimustock@2024", role: "inventory-view",  branch: "IDIMU" },
   { username: "ketu inventory",  password: "ketuinv@2024",   role: "inventory-view",  branch: "KETU"  },
   { username: "aja inventory",   password: "ajainv@2024",    role: "inventory-view",  branch: "AJA"   },
   { username: "aja rider",     password: "ajarider@2022",   role: "rider-manager", branch: "AJA"   },
@@ -2667,20 +2668,45 @@ function InventoryViewOnly({ branch, onLogout }) {
   const filteredInv  = filterByPeriod(inventory, mode, customDate, customDateEnd);
   const filteredOrds = filterByPeriod(allOrders,  mode, customDate, customDateEnd);
 
-  // Build stock for this branch: transfers in - transfers out - deliveries
+  // Build stock for this branch
+  const isIDIMU = branch === "IDIMU";
   const vendorMap = {};
-  filteredInv.filter(i => i.branch === branch && i.type === "transfer-in").forEach(i => {
-    const v = (i.vendor || "").trim(), n = (i.product || "").trim();
-    if (!v || !n) return;
-    if (!vendorMap[v]) vendorMap[v] = {};
-    if (!vendorMap[v][n]) vendorMap[v][n] = { transferredIn: 0, transferredOut: 0, delivered: 0 };
-    vendorMap[v][n].transferredIn += Number(i.qty) || 0;
-  });
-  filteredInv.filter(i => i.type === "transfer-out" && (i.fromBranch === branch || i.branch === branch)).forEach(i => {
-    const v = (i.vendor || "").trim(), n = (i.product || "").trim();
-    if (!v || !n || !vendorMap[v]?.[n]) return;
-    vendorMap[v][n].transferredOut += Number(i.qty) || 0;
-  });
+  function ensureV(v,n){ if(!vendorMap[v])vendorMap[v]={}; if(!vendorMap[v][n])vendorMap[v][n]={received:0,transferredIn:0,transferredOut:0,delivered:0}; }
+
+  if (isIDIMU) {
+    // IDIMU gets stock from waybill-in
+    filteredInv.filter(i => i.branch === "IDIMU" && i.type === "waybill-in").forEach(i => {
+      const v=(i.vendor||"").trim(), n=(i.product||"").trim();
+      if(!v||!n) return; ensureV(v,n);
+      vendorMap[v][n].received += Number(i.qty)||0;
+    });
+    // Transfer in (returns from other branches)
+    filteredInv.filter(i => i.branch === "IDIMU" && i.type === "transfer-in").forEach(i => {
+      const v=(i.vendor||"").trim(), n=(i.product||"").trim();
+      if(!v||!n) return; ensureV(v,n);
+      vendorMap[v][n].transferredIn += Number(i.qty)||0;
+    });
+    // Transfer out to other branches
+    filteredInv.filter(i => i.type === "transfer-out" && (i.fromBranch === "IDIMU" || i.branch === "IDIMU")).forEach(i => {
+      const v=(i.vendor||"").trim(), n=(i.product||"").trim();
+      if(!v||!n||!vendorMap[v]?.[n]) return;
+      vendorMap[v][n].transferredOut += Number(i.qty)||0;
+    });
+  } else {
+    // KETU/AJA get stock from transfer-in
+    filteredInv.filter(i => i.branch === branch && i.type === "transfer-in").forEach(i => {
+      const v=(i.vendor||"").trim(), n=(i.product||"").trim();
+      if(!v||!n) return; ensureV(v,n);
+      vendorMap[v][n].transferredIn += Number(i.qty)||0;
+    });
+    // Transfer out from this branch
+    filteredInv.filter(i => i.type === "transfer-out" && (i.fromBranch === branch || i.branch === branch)).forEach(i => {
+      const v=(i.vendor||"").trim(), n=(i.product||"").trim();
+      if(!v||!n||!vendorMap[v]?.[n]) return;
+      vendorMap[v][n].transferredOut += Number(i.qty)||0;
+    });
+  }
+  // Deliveries subtract from all branches
   filteredOrds.forEach(o => {
     const prods = typeof o.products === "string" ? (() => { try { return JSON.parse(o.products); } catch { return []; } })() : (o.products || []);
     prods.forEach(p => {
@@ -2709,33 +2735,44 @@ function InventoryViewOnly({ branch, onLogout }) {
         {vendorList.map(vendor => {
           const products = Object.entries(vendorMap[vendor])
             .filter(([name]) => !search || vendor.toLowerCase().includes(search.toLowerCase()) || name.toLowerCase().includes(search.toLowerCase()))
-            .map(([name, s]) => ({ name, ...s, remaining: s.transferredIn - s.transferredOut - s.delivered }));
+            .map(([name, s]) => ({
+                name, ...s,
+                remaining: isIDIMU
+                  ? s.received + s.transferredIn - s.transferredOut - s.delivered
+                  : s.transferredIn - s.transferredOut - s.delivered
+              }));
+          if (products.length === 0) return null;
           return (
             <div key={vendor} style={{ marginBottom: "16px" }}>
               <p style={{ fontSize: "13px", fontWeight: 800, color: "var(--navy)", marginBottom: "8px", paddingLeft: "2px" }}>{vendor}</p>
               <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                {products.map(item => (
-                  <div key={item.name} style={{
-                    background: item.remaining <= 0 ? "#fef2f2" : "#fff",
-                    border: `1.5px solid ${item.remaining <= 0 ? "#fecaca" : "var(--border)"}`,
-                    borderRadius: "var(--r-sm)", padding: "10px 14px",
-                    display: "flex", alignItems: "center", justifyContent: "space-between"
-                  }}>
-                    <p style={{ fontSize: "13px", fontWeight: 600, color: item.remaining <= 0 ? "var(--red)" : "var(--text)" }}>{item.name}</p>
-                    <div style={{ display: "flex", gap: "14px", alignItems: "center" }}>
-                      {[["Transferred In", item.transferredIn, "var(--green)"], ["Delivered", item.delivered, "var(--blue)"]].map(([label, val, color]) => (
-                        <div key={label} style={{ textAlign: "center", minWidth: "60px" }}>
-                          <p style={{ fontSize: "8px", color: "var(--text-faint)", fontWeight: 600, marginBottom: "2px" }}>{label}</p>
-                          <p style={{ fontFamily: "var(--display)", fontSize: "14px", fontWeight: 800, color }}>{val}</p>
+                {products.map(item => {
+                  const stats = isIDIMU
+                    ? [["Received", item.received, "var(--green)"], ["Sent Out", item.transferredOut, "var(--amber)"], ["Delivered", item.delivered, "var(--blue)"]]
+                    : [["Transferred In", item.transferredIn, "var(--green)"], ["Sent Out", item.transferredOut, "var(--amber)"], ["Delivered", item.delivered, "var(--blue)"]];
+                  return (
+                    <div key={item.name} style={{
+                      background: item.remaining <= 0 ? "#fef2f2" : "#fff",
+                      border: `1.5px solid ${item.remaining <= 0 ? "#fecaca" : "var(--border)"}`,
+                      borderRadius: "var(--r-sm)", padding: "10px 14px",
+                      display: "flex", alignItems: "center", justifyContent: "space-between"
+                    }}>
+                      <p style={{ fontSize: "13px", fontWeight: 600, color: item.remaining <= 0 ? "var(--red)" : "var(--text)" }}>{item.name}</p>
+                      <div style={{ display: "flex", gap: "14px", alignItems: "center" }}>
+                        {stats.map(([label, val, color]) => (
+                          <div key={label} style={{ textAlign: "center", minWidth: "60px" }}>
+                            <p style={{ fontSize: "8px", color: "var(--text-faint)", fontWeight: 600, marginBottom: "2px" }}>{label}</p>
+                            <p style={{ fontFamily: "var(--display)", fontSize: "14px", fontWeight: 800, color }}>{val}</p>
+                          </div>
+                        ))}
+                        <div style={{ textAlign: "center", background: item.remaining <= 0 ? "#fecaca" : "var(--blue-pale)", border: `1px solid ${item.remaining <= 0 ? "#fca5a5" : "var(--blue-pale2)"}`, borderRadius: "var(--r-sm)", padding: "6px 14px", minWidth: "64px" }}>
+                          <p style={{ fontSize: "8px", fontWeight: 700, color: item.remaining <= 0 ? "var(--red)" : "var(--blue)", marginBottom: "2px" }}>Remaining</p>
+                          <p style={{ fontFamily: "var(--display)", fontSize: "18px", fontWeight: 800, color: item.remaining <= 0 ? "var(--red)" : "var(--blue)", lineHeight: 1 }}>{item.remaining}</p>
                         </div>
-                      ))}
-                      <div style={{ textAlign: "center", background: item.remaining <= 0 ? "#fecaca" : "var(--blue-pale)", border: `1px solid ${item.remaining <= 0 ? "#fca5a5" : "var(--blue-pale2)"}`, borderRadius: "var(--r-sm)", padding: "6px 14px", minWidth: "64px" }}>
-                        <p style={{ fontSize: "8px", fontWeight: 700, color: item.remaining <= 0 ? "var(--red)" : "var(--blue)", marginBottom: "2px" }}>Remaining</p>
-                        <p style={{ fontFamily: "var(--display)", fontSize: "18px", fontWeight: 800, color: item.remaining <= 0 ? "var(--red)" : "var(--blue)", lineHeight: 1 }}>{item.remaining}</p>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           );
