@@ -2092,9 +2092,8 @@ function BossView({ onLogout }) {
             <PeriodFilter mode={mode} setMode={setMode} customDate={customDate} setCustomDate={setCustomDate} customDateEnd={customDateEnd} setCustomDateEnd={setCustomDateEnd}/>
             <input className="k-input" placeholder="🔍 Search vendor or product..." value={bossInvSearch} onChange={e=>setBossInvSearch(e.target.value)} style={{marginBottom:"16px"}}/>
             {BRANCHES.map(b => {
-              const filteredInv  = filterByPeriod(inventory, mode, customDate, customDateEnd);
-              const filteredOrds = filterByPeriod(orders, mode, customDate, customDateEnd);
-              const vendorMap = buildBossStockMap(b, filteredInv, filteredOrds);
+              // Stock is always cumulative — never date filtered
+              const vendorMap = buildBossStockMap(b, inventory, orders);
               const vendorList = Object.keys(vendorMap).filter(v =>
                 !bossInvSearch ||
                 v.toLowerCase().includes(bossInvSearch.toLowerCase()) ||
@@ -2351,9 +2350,8 @@ function InventoryAdminView({ branch, onLogout }) {
             <PeriodFilter mode={mode} setMode={setMode} customDate={customDate} setCustomDate={setCustomDate} customDateEnd={customDateEnd} setCustomDateEnd={setCustomDateEnd}/>
             <input className="k-input" placeholder="🔍 Search vendor or product..." value={search} onChange={e => setSearch(e.target.value)} style={{ marginBottom: "16px" }} />
             {BRANCHES.map(b => {
-              const filteredInv  = filterByPeriod(inventory, mode, customDate, customDateEnd);
-              const filteredOrds = filterByPeriod(allOrders, mode, customDate, customDateEnd);
-              const vendorMap = buildStockMap(b, filteredInv, filteredOrds);
+              // Stock is always cumulative — never date filtered
+              const vendorMap = buildStockMap(b, inventory, allOrders);
               const vendorList = Object.keys(vendorMap).filter(v =>
                 !search || v.toLowerCase().includes(search.toLowerCase()) ||
                 Object.keys(vendorMap[v]).some(p => p.toLowerCase().includes(search.toLowerCase()))
@@ -2700,49 +2698,47 @@ function InventoryViewOnly({ branch, onLogout }) {
       .catch(() => {}).finally(() => setSyncing(false));
   }, [branch]);
 
-  const filteredInv  = filterByPeriod(inventory, mode, customDate, customDateEnd);
-  const filteredOrds = filterByPeriod(allOrders,  mode, customDate, customDateEnd);
-
-  // Build stock for this branch
+  // Stock is always cumulative — never date filtered
   const isIDIMU = branch === "IDIMU";
   const vendorMap = {};
   function ensureV(v,n){ if(!vendorMap[v])vendorMap[v]={}; if(!vendorMap[v][n])vendorMap[v][n]={received:0,transferredIn:0,transferredOut:0,delivered:0}; }
 
   if (isIDIMU) {
-    // IDIMU gets stock from waybill-in
-    filteredInv.filter(i => i.branch === "IDIMU" && i.type === "waybill-in").forEach(i => {
+    inventory.filter(i => i.branch === "IDIMU" && i.type === "waybill-in").forEach(i => {
       const v=(i.vendor||"").trim(), n=(i.product||"").trim();
       if(!v||!n) return; ensureV(v,n);
       vendorMap[v][n].received += Number(i.qty)||0;
     });
-    // Transfer in (returns from other branches)
-    filteredInv.filter(i => i.branch === "IDIMU" && i.type === "transfer-in").forEach(i => {
+    inventory.filter(i => i.branch === "IDIMU" && i.type === "transfer-in").forEach(i => {
       const v=(i.vendor||"").trim(), n=(i.product||"").trim();
       if(!v||!n) return; ensureV(v,n);
       vendorMap[v][n].transferredIn += Number(i.qty)||0;
     });
-    // Transfer out to other branches
-    filteredInv.filter(i => i.type === "transfer-out" && (i.fromBranch === "IDIMU" || i.branch === "IDIMU")).forEach(i => {
+    inventory.filter(i => i.type === "transfer-out" && (i.fromBranch === "IDIMU" || i.branch === "IDIMU")).forEach(i => {
+      const v=(i.vendor||"").trim(), n=(i.product||"").trim();
+      if(!v||!n||!vendorMap[v]?.[n]) return;
+      vendorMap[v][n].transferredOut += Number(i.qty)||0;
+    });
+    // Waybill out (returned to vendor) reduces IDIMU stock
+    inventory.filter(i => i.branch === "IDIMU" && i.type === "waybill-out").forEach(i => {
       const v=(i.vendor||"").trim(), n=(i.product||"").trim();
       if(!v||!n||!vendorMap[v]?.[n]) return;
       vendorMap[v][n].transferredOut += Number(i.qty)||0;
     });
   } else {
-    // KETU/AJA get stock from transfer-in
-    filteredInv.filter(i => i.branch === branch && i.type === "transfer-in").forEach(i => {
+    inventory.filter(i => i.branch === branch && i.type === "transfer-in").forEach(i => {
       const v=(i.vendor||"").trim(), n=(i.product||"").trim();
       if(!v||!n) return; ensureV(v,n);
       vendorMap[v][n].transferredIn += Number(i.qty)||0;
     });
-    // Transfer out from this branch
-    filteredInv.filter(i => i.type === "transfer-out" && (i.fromBranch === branch || i.branch === branch)).forEach(i => {
+    inventory.filter(i => i.type === "transfer-out" && (i.fromBranch === branch || i.branch === branch)).forEach(i => {
       const v=(i.vendor||"").trim(), n=(i.product||"").trim();
       if(!v||!n||!vendorMap[v]?.[n]) return;
       vendorMap[v][n].transferredOut += Number(i.qty)||0;
     });
   }
-  // Deliveries subtract from all branches
-  filteredOrds.forEach(o => {
+  // All deliveries ever (not filtered)
+  allOrders.forEach(o => {
     const prods = typeof o.products === "string" ? (() => { try { return JSON.parse(o.products); } catch { return []; } })() : (o.products || []);
     prods.forEach(p => {
       const v = (p.vendor || "").trim(), n = (p.name || "").trim();
