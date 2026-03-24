@@ -411,36 +411,30 @@ function SectionTitle({ title, sub }) {
 function PeriodFilter({ mode, setMode, customDate, setCustomDate, customDateEnd, setCustomDateEnd }) {
   return (
     <div style={{ marginBottom:"16px" }}>
-      <div style={{ display:"flex", alignItems:"center", gap:"6px", flexWrap:"wrap", marginBottom:"8px" }}>
+      <div style={{ display:"flex", alignItems:"center", gap:"6px", flexWrap:"wrap", marginBottom: mode==="range" ? "8px" : "0" }}>
         {[["today","Today"],["week","Week"],["month","Month"],["range","Range"],["all","All"]].map(([id, lbl]) => (
           <button key={id} onClick={() => setMode(id)} style={{
-            padding:"5px 14px", borderRadius:"99px", fontSize:"12px", fontWeight:600, cursor:"pointer",
+            padding:"6px 14px", borderRadius:"99px", fontSize:"12px", fontWeight:600, cursor:"pointer",
             border:`1.5px solid ${mode===id ? "var(--blue)" : "var(--border)"}`,
             background: mode===id ? "var(--blue)" : "#fff",
             color: mode===id ? "#fff" : "var(--text-dim)", transition:"all .15s",
+            minHeight:"36px",
           }}>{lbl}</button>
         ))}
-        <div style={{ marginLeft:"auto", display:"flex", gap:"6px", alignItems:"center" }}>
-          <input type="date" value={customDate}
-            onChange={e => { setCustomDate(e.target.value); setMode("custom"); }}
-            className="k-input"
-            style={{ width:"140px", fontSize:"12px", padding:"5px 10px",
-              borderColor: mode==="custom" ? "var(--blue)" : "var(--border)" }}/>
-          {(mode === "custom" || mode === "range") && customDate && (
-            <button onClick={() => { setMode("today"); setCustomDate(""); if(setCustomDateEnd) setCustomDateEnd(""); }}
-              style={{ background:"#fff", border:"1.5px solid var(--border)", color:"var(--text-dim)",
-                borderRadius:"var(--r-sm)", padding:"5px 8px", fontSize:"12px", cursor:"pointer" }}>✕</button>
-          )}
-        </div>
+        {mode === "custom" && customDate && (
+          <button onClick={() => { setMode("today"); setCustomDate(""); if(setCustomDateEnd) setCustomDateEnd(""); }}
+            style={{ background:"#fff", border:"1.5px solid var(--border)", color:"var(--text-dim)",
+              borderRadius:"99px", padding:"6px 10px", fontSize:"12px", cursor:"pointer", minHeight:"36px" }}>✕</button>
+        )}
       </div>
       {mode === "range" && (
-        <div style={{ display:"flex", alignItems:"center", gap:"8px", background:"var(--blue-pale)", border:"1.5px solid var(--blue-pale2)", borderRadius:"var(--r-sm)", padding:"8px 12px" }}>
+        <div style={{ display:"flex", alignItems:"center", gap:"8px", background:"var(--blue-pale)", border:"1.5px solid var(--blue-pale2)", borderRadius:"var(--r-sm)", padding:"8px 12px", marginTop:"8px" }}>
           <span style={{ fontSize:"11px", color:"var(--text-dim)", fontWeight:600, whiteSpace:"nowrap" }}>From</span>
           <input type="date" value={customDate} onChange={e => setCustomDate(e.target.value)}
-            className="k-input" style={{ flex:1, fontSize:"12px", padding:"5px 8px" }}/>
+            className="k-input" style={{ flex:1, fontSize:"13px", padding:"6px 8px" }}/>
           <span style={{ fontSize:"11px", color:"var(--text-dim)", fontWeight:600, whiteSpace:"nowrap" }}>To</span>
           <input type="date" value={customDateEnd||""} onChange={e => setCustomDateEnd && setCustomDateEnd(e.target.value)}
-            className="k-input" style={{ flex:1, fontSize:"12px", padding:"5px 8px" }}/>
+            className="k-input" style={{ flex:1, fontSize:"13px", padding:"6px 8px" }}/>
         </div>
       )}
     </div>
@@ -877,7 +871,8 @@ function RiderManagerView({ branch, onLogout }) {
               {/* Date */}
               <div style={{ marginBottom: "16px" }}>
                 <label className="k-label">Date</label>
-                <input type="date" className="k-input" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} />
+                <input type="date" className="k-input" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))}
+                  style={{ fontSize:"15px", fontWeight:600, color:"var(--text)" }}/>
               </div>
 
               {/* Customer details */}
@@ -1071,24 +1066,28 @@ function RiderManagerView({ branch, onLogout }) {
                 <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--blue)", textTransform: "uppercase", letterSpacing: ".04em" }}>Road Expense per Rider</p>
                 {roadSaved && <Tag label="✓ Saved" type="green" />}
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginBottom: "10px" }}>
-                <div>
-                  <label className="k-label">Rider</label>
-                  <select className="k-input" value={roadForm.rider} onChange={e => setRoadForm(f => ({ ...f, rider: e.target.value }))}>
-                    {RIDERS[branch].map(r => <option key={r}>{r}</option>)}
-                  </select>
+              <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginBottom: "10px" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+                  <div>
+                    <label className="k-label">Rider</label>
+                    <select className="k-input" value={roadForm.rider} onChange={e => setRoadForm(f => ({ ...f, rider: e.target.value }))}>
+                      {RIDERS[branch].map(r => <option key={r}>{r}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="k-label">Date</label>
+                    <input type="date" className="k-input" value={roadForm.date} onChange={e => setRoadForm(f => ({ ...f, date: e.target.value }))} style={{ fontSize:"14px" }}/>
+                  </div>
                 </div>
-                <div>
-                  <label className="k-label">Date</label>
-                  <input type="date" className="k-input" value={roadForm.date} onChange={e => setRoadForm(f => ({ ...f, date: e.target.value }))} />
-                </div>
-                <div>
-                  <label className="k-label">Amount (₦)</label>
-                  <input type="number" className="k-input" placeholder="0" value={roadForm.amount} onChange={e => setRoadForm(f => ({ ...f, amount: e.target.value }))} />
-                </div>
-                <div>
-                  <label className="k-label">Note</label>
-                  <input className="k-input" placeholder="Fuel, toll..." value={roadForm.note} onChange={e => setRoadForm(f => ({ ...f, note: e.target.value }))} />
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+                  <div>
+                    <label className="k-label">Amount (₦)</label>
+                    <input type="number" className="k-input" placeholder="0" value={roadForm.amount} onChange={e => setRoadForm(f => ({ ...f, amount: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label className="k-label">Note</label>
+                    <input className="k-input" placeholder="Fuel, toll..." value={roadForm.note} onChange={e => setRoadForm(f => ({ ...f, note: e.target.value }))} />
+                  </div>
                 </div>
               </div>
               <button onClick={saveRoadExpense} disabled={!roadForm.amount} style={{ width: "100%", padding: "9px", background: !roadForm.amount ? "#f1f5f9" : "var(--blue)", border: "none", borderRadius: "var(--r-sm)", color: !roadForm.amount ? "#94a3b8" : "#fff", fontFamily: "var(--display)", fontSize: "12px", fontWeight: 700, cursor: !roadForm.amount ? "not-allowed" : "pointer" }}>
