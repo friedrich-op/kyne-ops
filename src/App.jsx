@@ -167,6 +167,7 @@ function parseSheetRows(data) {
       totalPrice:     Number(row.totalPrice)      || 0,
       phone:          row.phone                   || "",
       riderRemitted:  row.riderRemitted === "true" || row.riderRemitted === true,
+      edited:         row.edited === "true" || row.edited === true,
       // RiderPayments fields — recalculate outstanding/cleared from actual numbers
       cash:           Number(row.cash)            || 0,
       pos:            Number(row.pos)             || 0,
@@ -730,6 +731,9 @@ function RiderManagerView({ branch, onLogout }) {
 
   // ── Assign state ──
   const [assignRider, setAssignRider] = useState({}); // { orderId: riderName }
+  // ── Edit delivered state ──
+  const [editDeliveredId, setEditDeliveredId] = useState(null);
+  const [editDeliveredForm, setEditDeliveredForm] = useState(null);
 
   // ── Road expense per rider per day ──
   const [roadExpenses, setRoadExpenses] = useState({});
@@ -821,6 +825,22 @@ function RiderManagerView({ branch, onLogout }) {
     setOrders(updated);
     const order = updated.find(o => String(o.id) === String(id));
     if (order) sheetUpdate("Orders", { ...order, products: JSON.stringify(order.products || []) }).catch(() => {});
+  }
+
+  // ── Submit edit for delivered order (one-time only) ──
+  function submitEditDelivered() {
+    if (!editDeliveredForm) return;
+    const oldOrder = orders.find(o => String(o.id) === String(editDeliveredId));
+    if (!oldOrder) return;
+    const products = editDeliveredForm.products.map(p => ({
+      ...p, qty: Number(p.qty) || 1, price: Number(p.price) || 0
+    }));
+    const totalPrice = products.reduce((s, p) => s + (Number(p.price) || 0), 0);
+    const updated = { ...oldOrder, products, totalPrice, edited: true };
+    setOrders(p => p.map(o => String(o.id) === String(editDeliveredId) ? updated : o));
+    sheetUpdate("Orders", { ...updated, products: JSON.stringify(products) }).catch(() => {});
+    setEditDeliveredId(null);
+    setEditDeliveredForm(null);
   }
 
   function saveRoadExpense() {
@@ -1054,6 +1074,79 @@ function RiderManagerView({ branch, onLogout }) {
           </div>
         )}
 
+        {/* ── EDIT DELIVERED MODAL ── */}
+        {editDeliveredId && editDeliveredForm && (
+          <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.55)", zIndex:50, display:"flex", alignItems:"flex-end", justifyContent:"center", padding:"0" }}>
+            <div className="slide-down" style={{ background:"#fff", borderRadius:"var(--r-lg) var(--r-lg) 0 0", padding:"20px 16px 32px", width:"100%", maxWidth:"520px", maxHeight:"90vh", overflowY:"auto", boxShadow:"0 -8px 40px rgba(0,0,0,.25)" }}>
+              <div style={{ width:"36px", height:"4px", background:"var(--border)", borderRadius:"99px", margin:"0 auto 16px" }}/>
+              <p style={{ fontFamily:"var(--display)", fontSize:"16px", fontWeight:800, marginBottom:"4px" }}>Edit Delivered Order</p>
+              <p style={{ fontSize:"12px", color:"var(--red)", marginBottom:"16px", fontWeight:500 }}>⚠ One-time edit only — locked after saving</p>
+
+              {editDeliveredForm.products.map((p, i) => (
+                <div key={i} style={{ background:"var(--surface2)", border:"1px solid var(--border)", borderRadius:"var(--r-sm)", padding:"12px", marginBottom:"10px" }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"8px" }}>
+                    <span style={{ fontSize:"12px", fontWeight:600, color:"var(--text-dim)" }}>Item {i+1}</span>
+                    {editDeliveredForm.products.length > 1 && (
+                      <button onClick={() => setEditDeliveredForm(f => ({ ...f, products: f.products.filter((_,ii)=>ii!==i) }))}
+                        style={{ background:"#fef2f2", border:"1.5px solid #fecaca", borderRadius:"var(--r-sm)", color:"var(--red)", fontSize:"11px", fontWeight:600, cursor:"pointer", padding:"2px 8px" }}>Remove</button>
+                    )}
+                  </div>
+                  <div style={{ display:"flex", flexDirection:"column", gap:"8px", marginBottom:"8px" }}>
+                    <div>
+                      <label className="k-label">Vendor</label>
+                      <select className="k-input" value={p.vendor||""} onChange={e => setEditDeliveredForm(f=>({...f,products:f.products.map((pp,ii)=>ii===i?{...pp,vendor:e.target.value,name:""}:pp)}))}>
+                        <option value="">Select vendor...</option>
+                        {VENDOR_NAMES.map(v=><option key={v} value={v}>{v}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="k-label">Product</label>
+                      <select className="k-input" value={p.name||""} onChange={e => setEditDeliveredForm(f=>({...f,products:f.products.map((pp,ii)=>ii===i?{...pp,name:e.target.value}:pp)}))} disabled={!p.vendor}>
+                        <option value="">Select product...</option>
+                        {p.vendor && (VENDORS[p.vendor]||[]).map(n=><option key={n} value={n}>{n}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"8px" }}>
+                    <div>
+                      <label className="k-label">Qty</label>
+                      <input type="number" className="k-input" min="1" value={p.qty} onChange={e => setEditDeliveredForm(f=>({...f,products:f.products.map((pp,ii)=>ii===i?{...pp,qty:e.target.value}:pp)}))}/>
+                    </div>
+                    <div>
+                      <label className="k-label">Price (₦)</label>
+                      <input type="number" className="k-input" value={p.price} onChange={e => setEditDeliveredForm(f=>({...f,products:f.products.map((pp,ii)=>ii===i?{...pp,price:e.target.value}:pp)}))}/>
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              <button onClick={() => setEditDeliveredForm(f=>({...f,products:[...f.products,{vendor:VENDOR_NAMES[0],name:"",qty:1,price:""}]}))}
+                style={{ width:"100%", padding:"10px", background:"var(--blue-pale)", border:"1.5px solid var(--blue-pale2)", borderRadius:"var(--r-sm)", color:"var(--blue)", fontSize:"13px", fontWeight:700, cursor:"pointer", marginBottom:"12px" }}>
+                + Add Product
+              </button>
+
+              <div style={{ background:"var(--blue-pale)", border:"1.5px solid var(--blue-pale2)", borderRadius:"var(--r-sm)", padding:"10px 14px", display:"flex", justifyContent:"space-between", marginBottom:"16px" }}>
+                <span style={{ fontSize:"13px", fontWeight:600, color:"var(--text-dim)" }}>New Total</span>
+                <span style={{ fontFamily:"var(--display)", fontSize:"15px", fontWeight:800, color:"var(--blue)" }}>
+                  {fmt(editDeliveredForm.products.reduce((s,p)=>s+(Number(p.price)||0),0))}
+                </span>
+              </div>
+
+              <div style={{ display:"flex", gap:"10px" }}>
+                <button onClick={submitEditDelivered}
+                  disabled={editDeliveredForm.products.some(p=>!p.name||!p.price)}
+                  style={{ flex:1, padding:"14px", background:editDeliveredForm.products.some(p=>!p.name||!p.price)?"#f1f5f9":"var(--green)", border:"none", borderRadius:"var(--r-sm)", color:editDeliveredForm.products.some(p=>!p.name||!p.price)?"#94a3b8":"#fff", fontFamily:"var(--display)", fontSize:"14px", fontWeight:800, cursor:"pointer" }}>
+                  Save Changes ✓
+                </button>
+                <button onClick={() => { setEditDeliveredId(null); setEditDeliveredForm(null); }}
+                  style={{ padding:"14px 20px", background:"#fff", border:"1.5px solid var(--border)", borderRadius:"var(--r-sm)", color:"var(--text-dim)", fontSize:"13px", fontWeight:600, cursor:"pointer" }}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* ── UPDATE ORDERS TAB ── */}
         {tab === "update" && (
           <div className="fade-in">
@@ -1111,7 +1204,13 @@ function RiderManagerView({ branch, onLogout }) {
                 <div className="slide-down" style={{ background: "#fff", borderRadius: "var(--r-lg)", padding: "24px", width: "100%", maxWidth: "500px", maxHeight: "90vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,.3)" }}>
                   <p style={{ fontFamily: "var(--display)", fontSize: "15px", fontWeight: 800, marginBottom: "4px" }}>Mark as Delivered</p>
                   <p style={{ fontSize: "12px", color: "var(--text-faint)", marginBottom: "16px" }}>{editForm.customerName} · {editForm.rider}</p>
-                  <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: "10px" }}>Edit Products</p>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"10px" }}>
+                    <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: ".04em" }}>Edit Products</p>
+                    <button onClick={() => setEditForm(f => ({ ...f, products: [...f.products, { vendor: VENDOR_NAMES[0], name: "", qty: 1, price: "" }] }))}
+                      style={{ background:"var(--blue-pale)", border:"1.5px solid var(--blue-pale2)", color:"var(--blue)", borderRadius:"var(--r-sm)", padding:"4px 10px", fontSize:"11px", fontWeight:700, cursor:"pointer" }}>
+                      + Add
+                    </button>
+                  </div>
                   {editForm.products.map((p, i) => (
                     <div key={i} style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--r-sm)", padding: "10px", marginBottom: "8px" }}>
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginBottom: "8px" }}>
@@ -1163,22 +1262,27 @@ function RiderManagerView({ branch, onLogout }) {
                     <div key={o.id} style={{ background: "#fff", border: "1.5px solid var(--border)", borderRadius: "var(--r)", padding: "12px 14px", boxShadow: "var(--shadow)" }}>
                       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "8px" }}>
                         <div>
+                          <div>
                           <p style={{ fontSize: "14px", fontWeight: 700 }}>{o.customerName}</p>
-                          {o.phone && <a href={`tel:${o.phone}`} style={{ fontSize: "13px", color: "var(--blue)", marginTop: "2px", display: "block", fontWeight: 600, textDecoration: "none" }}>📞 {o.phone}</a>}
-                          <p style={{ fontSize: "11px", color: "var(--text-faint)", marginTop: "2px" }}>📍 {o.address} · {o.rider} · {o.date}</p>
-                          <div style={{ marginTop: "6px" }}>
+                          {o.phone && <a href={`tel:${o.phone}`} style={{ fontSize: "13px", color: "var(--blue)", marginTop: "3px", display: "block", fontWeight: 600, textDecoration: "none" }}>📞 {o.phone}</a>}
+                          <p style={{ fontSize: "11px", color: "var(--text-faint)", marginTop: "3px" }}>📍 {o.address}</p>
+                          <p style={{ fontSize: "11px", color: "var(--text-faint)", marginTop: "2px" }}>🛵 {o.rider} · {o.date}</p>
+                          <div style={{ marginTop: "8px", display:"flex", flexDirection:"column", gap:"4px" }}>
                             {getProducts(o).map((p, i) => (
-                              <span key={i} style={{ fontSize: "11px", color: "var(--text-dim)", marginRight: "10px" }}>🏷 {p.name} ×{p.qty} — {fmt(p.price)}</span>
+                              <div key={i} style={{ background:"var(--surface2)", border:"1px solid var(--border)", borderRadius:"var(--r-sm)", padding:"6px 10px", display:"flex", justifyContent:"space-between" }}>
+                                <span style={{ fontSize: "12px", fontWeight:600, color:"var(--text)" }}>{p.name} ×{p.qty}</span>
+                                <span style={{ fontSize:"12px", fontWeight:700, color:"var(--blue)" }}>{fmt(p.price)}</span>
+                              </div>
                             ))}
                           </div>
                         </div>
-                        <span style={{ fontFamily: "var(--display)", fontSize: "15px", fontWeight: 800, color: "var(--blue)", marginLeft: "12px", flexShrink: 0 }}>
+                        <span style={{ fontFamily: "var(--display)", fontSize: "16px", fontWeight: 800, color: "var(--blue)", marginLeft: "12px", flexShrink: 0, alignSelf:"flex-start" }}>
                           {fmt(getProducts(o).reduce((s, p) => s + (Number(p.price) || 0), 0))}
                         </span>
                       </div>
-                      <div style={{ display: "flex", gap: "8px", paddingTop: "10px", borderTop: "1px solid var(--border)" }}>
-                        <button onClick={() => markDelivered(o.id)} style={{ flex: 1, padding: "11px", background: "var(--green)", border: "none", borderRadius: "var(--r-sm)", color: "#fff", fontSize: "13px", fontWeight: 700, cursor: "pointer" }}>✓ Delivered</button>
-                        <button onClick={() => markFailed(o.id)} style={{ flex: 1, padding: "11px", background: "#fef2f2", border: "1.5px solid #fecaca", borderRadius: "var(--r-sm)", color: "var(--red)", fontSize: "13px", fontWeight: 700, cursor: "pointer" }}>✕ Failed</button>
+                      <div style={{ display: "flex", gap: "8px", paddingTop: "12px", borderTop: "1px solid var(--border)" }}>
+                        <button onClick={() => markDelivered(o.id)} style={{ flex: 1, padding: "13px", background: "var(--green)", border: "none", borderRadius: "var(--r-sm)", color: "#fff", fontSize: "13px", fontWeight: 700, cursor: "pointer" }}>✓ Delivered</button>
+                        <button onClick={() => markFailed(o.id)} style={{ flex: 1, padding: "13px", background: "#fef2f2", border: "1.5px solid #fecaca", borderRadius: "var(--r-sm)", color: "var(--red)", fontSize: "13px", fontWeight: 700, cursor: "pointer" }}>✕ Failed</button>
                       </div>
                     </div>
                   ))}
@@ -1192,20 +1296,36 @@ function RiderManagerView({ branch, onLogout }) {
                 <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--green)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: "8px" }}>✓ Delivered ({delivered.length})</p>
                 <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: "20px" }}>
                   {delivered.map(o => (
-                    <div key={o.id} style={{ background: "#ecfdf5", border: "1.5px solid #a7f3d0", borderRadius: "var(--r)", padding: "12px 14px" }}>
-                      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
-                        <div>
-                          <p style={{ fontSize: "13px", fontWeight: 600 }}>{o.customerName}</p>
-                          <p style={{ fontSize: "11px", color: "var(--text-faint)", marginTop: "2px" }}>{o.address} · {o.rider} · {o.date}</p>
-                          <div style={{ marginTop: "6px" }}>
+                    <div key={o.id} style={{ background: o.edited?"#fff":"#ecfdf5", border: `1.5px solid ${o.edited?"var(--border)":"#a7f3d0"}`, borderRadius: "var(--r)", padding: "12px 14px" }}>
+                      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom:"8px" }}>
+                        <div style={{ flex:1 }}>
+                          <p style={{ fontSize: "13px", fontWeight: 700 }}>{o.customerName}</p>
+                          {o.phone && <a href={`tel:${o.phone}`} style={{ fontSize:"12px", color:"var(--blue)", marginTop:"2px", display:"block", fontWeight:600, textDecoration:"none" }}>📞 {o.phone}</a>}
+                          <p style={{ fontSize: "11px", color: "var(--text-faint)", marginTop: "2px" }}>🛵 {o.rider} · {o.date}</p>
+                          <div style={{ marginTop: "6px", display:"flex", flexDirection:"column", gap:"3px" }}>
                             {getProducts(o).map((p, i) => (
-                              <span key={i} style={{ fontSize: "11px", color: "var(--text-dim)", marginRight: "10px" }}>🏷 {p.name} ×{p.qty} — {fmt(p.price)}</span>
+                              <div key={i} style={{ display:"flex", justifyContent:"space-between", padding:"5px 8px", background:"rgba(5,150,105,.06)", borderRadius:"var(--r-sm)" }}>
+                                <span style={{ fontSize:"12px", fontWeight:600 }}>{p.name} ×{p.qty}</span>
+                                <span style={{ fontSize:"12px", fontWeight:700, color:"var(--green)" }}>{fmt(p.price)}</span>
+                              </div>
                             ))}
                           </div>
                         </div>
-                        <span style={{ fontFamily: "var(--display)", fontSize: "14px", fontWeight: 700, color: "var(--green)", marginLeft: "12px", flexShrink: 0 }}>
-                          {fmt(getProducts(o).reduce((s, p) => s + (Number(p.price) || 0), 0))}
-                        </span>
+                        <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:"6px", marginLeft:"12px", flexShrink:0 }}>
+                          <span style={{ fontFamily: "var(--display)", fontSize: "15px", fontWeight: 800, color: "var(--green)" }}>
+                            {fmt(getProducts(o).reduce((s, p) => s + (Number(p.price) || 0), 0))}
+                          </span>
+                          {!o.edited && (
+                            <button onClick={() => {
+                              const prods = getProducts(o);
+                              setEditDeliveredId(o.id);
+                              setEditDeliveredForm({ products: prods.map(p=>({...p})) });
+                            }} style={{ padding:"5px 10px", background:"#fffbeb", border:"1.5px solid #fde68a", borderRadius:"var(--r-sm)", color:"var(--amber)", fontSize:"11px", fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>
+                              ✏ Edit
+                            </button>
+                          )}
+                          {o.edited && <span style={{ fontSize:"10px", color:"var(--text-faint)", fontWeight:600 }}>Edited ✓</span>}
+                        </div>
                       </div>
                     </div>
                   ))}
