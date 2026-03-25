@@ -863,7 +863,7 @@ function RiderManagerView({ branch, onLogout }) {
 
   const TABS = [
     { id: "log",    label: "Log Orders" },
-    { id: "assign", label: unassigned.length > 0 ? `Assign (${unassigned.length} ⚠)` : "Assign" },
+    { id: "assign", label: unassigned.length > 0 ? "Assign (" + unassigned.length + " !)" : "Assign" },
     { id: "update", label: "Update Orders" },
     { id: "riders", label: "Riders" },
   ];
@@ -2114,4 +2114,885 @@ function BossView({ onLogout }) {
                 <div style={{display:"flex",flexDirection:"column",gap:"6px",marginBottom:"20px"}}>
                   {branchStats.filter(b=>b.branchPayments.length>0).map(b=>(
                     b.branchPayments.map(rp=>(
-                      <div key={rp.id||rp.rider} style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:"var(--r-sm)",padding:"7px 12px",d
+                      <div key={rp.id||rp.rider} style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:"var(--r-sm)",padding:"7px 12px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                        <div style={{display:"flex",alignItems:"center",gap:"8px"}}>
+                          <RiderAvatar name={rp.rider} size={24}/>
+                          <div>
+                            <p style={{fontSize:"12px",fontWeight:600}}>{rp.rider}</p>
+                            <p style={{fontSize:"10px",color:"var(--text-faint)"}}>{b.branch} · {rp.date}</p>
+                          </div>
+                        </div>
+                        <p style={{fontFamily:"var(--display)",fontSize:"13px",fontWeight:800,color:"var(--red)"}}>{fmt(rp.outstanding)}</p>
+                      </div>
+                    ))
+                  ))}
+                </div>
+              </>
+            )}
+
+            {/* ── SECTION 4: QUICK STATS ── */}
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"10px"}}>
+              <StatCard label="Total Orders"    value={String(grand.orders)}/>
+              <StatCard label="Bonus Due"       value={fmt(grand.bonus)} accent="blue" sub={period.label}/>
+              <StatCard label="Outstanding"     value={fmt(grand.outstanding)} accent={grand.outstanding>0?"red":"green"}/>
+            </div>
+          </div>
+        )}
+
+        {tab==="remittances" && (
+          <div className="fade-in">
+            <SectionTitle title="Branch Remittances"/>
+            <PeriodFilter mode={mode} setMode={setMode} customDate={customDate} setCustomDate={setCustomDate} customDateEnd={customDateEnd} setCustomDateEnd={setCustomDateEnd}/>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:"10px", marginBottom:"20px" }}>
+              <StatCard label="Expected" value={fmt(grand.expected)}/>
+              <StatCard label="Received" value={fmt(grand.sent)} accent={grandDiff>=0?"green":"red"}/>
+              <StatCard label="Diff"     value={Math.abs(grandDiff)<1?"Exact":grandDiff<0?`-${fmt(Math.abs(grandDiff))}`:`+${fmt(grandDiff)}`} accent={Math.abs(grandDiff)<1?"green":grandDiff<0?"red":"amber"}/>
+            </div>
+            {branchStats.map(b => (
+              <div key={b.branch} style={{ marginBottom:"24px" }}>
+                <p style={{ fontSize:"11px", fontWeight:600, color:"var(--text-dim)", textTransform:"uppercase", letterSpacing:".06em", marginBottom:"8px" }}>{b.branch} Branch</p>
+                {b.remitRecs.length > 0
+                  ? b.remitRecs.map(r => <RemitCard key={r.id} rec={r}/>)
+                  : (
+                    <div style={{ background:"#fff", border:"1.5px solid var(--border)", borderRadius:"var(--r)",
+                      padding:"14px 16px", display:"flex", alignItems:"center", justifyContent:"space-between", boxShadow:"var(--shadow)" }}>
+                      <div>
+                        <p style={{ fontSize:"13px", fontWeight:500, color:"var(--text-dim)" }}>No remittance logged for {b.branch}</p>
+                        <p style={{ fontSize:"11px", color:"var(--text-faint)", marginTop:"2px" }}>Expected: {fmt(b.expected)}</p>
+                      </div>
+                      {b.expected>0 && <Tag label="⚠ Not sent yet" type="red"/>}
+                    </div>
+                  )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {tab==="branches" && (
+          <div className="fade-in">
+            <SectionTitle title="Branch Breakdown"/>
+            <PeriodFilter mode={mode} setMode={setMode} customDate={customDate} setCustomDate={setCustomDate} customDateEnd={customDateEnd} setCustomDateEnd={setCustomDateEnd}/>
+            <div style={{ display:"flex", flexDirection:"column", gap:"12px" }}>
+              {branchStats.map(b => (
+                <Card key={b.branch}>
+                  <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:"14px" }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:"10px" }}>
+                      <div style={{ width:"36px", height:"36px", borderRadius:"10px", background:"#eff4ff",
+                        border:"1.5px solid #bfdbfe", display:"flex", alignItems:"center", justifyContent:"center",
+                        fontFamily:"var(--display)", fontSize:"14px", fontWeight:800, color:"var(--blue)" }}>{b.branch[0]}</div>
+                      <div>
+                        <span style={{ fontFamily:"var(--display)", fontSize:"14px", fontWeight:700 }}>{b.branch}</span>
+                        <p style={{ fontSize:"11px", color:"var(--text-faint)" }}>{RIDERS[b.branch].length} riders</p>
+                      </div>
+                    </div>
+                    <div style={{ display:"flex", gap:"6px", alignItems:"center" }}>
+                      {Math.abs(b.diff)<1&&b.totalSent>0 && <Tag label="✓ Balanced" type="green"/>}
+                      {b.diff<0 && <Tag label={`Short ${fmt(Math.abs(b.diff))}`} type="red"/>}
+                      {b.diff>0 && <Tag label={`Over ${fmt(b.diff)}`} type="amber"/>}
+                      <span style={{ fontSize:"11px", color:"var(--text-faint)" }}>{b.delivered}/{b.total} delivered</span>
+                    </div>
+                  </div>
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:"8px", marginBottom:"10px" }}>
+                    {[
+                      ["Cash Collected",  fmt(b.cashCollected),  "var(--blue)"],
+                      ["POS Collected",   fmt(b.posCollected),   "var(--green)"],
+                      ["Net Expected",    fmt(b.expected),       "var(--text)"],
+                      ["Cash Sent",       fmt(b.totalSent),      b.diff<0?"var(--red)":Math.abs(b.diff)<1&&b.totalSent>0?"var(--green)":"var(--text)"],
+                    ].map(([label,val,color])=>(
+                      <div key={label} style={{ background:"var(--surface2)", border:"1px solid var(--border)", borderRadius:"var(--r-sm)", padding:"10px" }}>
+                        <p style={{ fontSize:"9px", fontWeight:600, color:"var(--text-faint)", marginBottom:"3px" }}>{label}</p>
+                        <p style={{ fontFamily:"var(--display)", fontSize:"13px", fontWeight:700, color }}>{val}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ borderTop:"1.5px solid var(--border)", paddingTop:"10px", display:"flex", justifyContent:"space-between" }}>
+                    <span style={{ fontSize:"11px", color:"var(--text-faint)" }}>Branch expenses: <strong style={{color:"var(--red)"}}>{fmt(b.branchExp)}</strong></span>
+                    <span style={{ fontSize:"11px", color:"var(--text-faint)" }}>Bonus payable: <strong style={{color:"var(--blue)"}}>{fmt(b.bonus)}</strong></span>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {tab==="riders" && (
+          <div className="fade-in">
+            <SectionTitle title="All Riders — Bonus Overview"/>
+            <div style={{ background:"var(--navy)", borderRadius:"var(--r)", padding:"20px", marginBottom:"20px" }}>
+              <p style={{ fontSize:"10px", fontWeight:600, color:"rgba(255,255,255,.5)", textTransform:"uppercase", letterSpacing:".08em", marginBottom:"4px" }}>Total Bonus — All Branches</p>
+              <p style={{ fontFamily:"var(--display)", fontSize:"28px", fontWeight:800, color:"#fff", lineHeight:1, marginBottom:"4px" }}>{fmt(grand.bonus)}</p>
+              <p style={{ fontSize:"11px", color:"rgba(255,255,255,.4)" }}>{period.label} · {RIDERS.AJA.length+RIDERS.IDIMU.length+RIDERS.KETU.length} riders</p>
+            </div>
+            {BRANCHES.map(b => (
+              <div key={b} style={{ marginBottom:"20px" }}>
+                <p style={{ fontSize:"11px", fontWeight:600, color:"var(--text-dim)", textTransform:"uppercase", letterSpacing:".06em", marginBottom:"10px" }}>{b} Branch — {RIDERS[b].length} riders</p>
+                <Card>
+                  {RIDERS[b].map(name => {
+                    const count = orders.filter(o=>o.rider===name&&isInBonusPeriod(o.date)&&o.status==="Delivered").length;
+                    return <BonusRow key={name} name={name} count={count} period={period.label}/>;
+                  })}
+                  <div style={{ marginTop:"12px", paddingTop:"12px", borderTop:"1.5px solid var(--border)",
+                    display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                    <span style={{ fontSize:"11px", fontWeight:600, color:"var(--text-dim)", textTransform:"uppercase", letterSpacing:".04em" }}>{b} Total</span>
+                    <span style={{ fontFamily:"var(--display)", fontSize:"15px", fontWeight:800, color:"var(--blue)" }}>
+                      {fmt(RIDERS[b].reduce((s,n)=>s+calcBonus(orders.filter(o=>o.rider===n&&isInBonusPeriod(o.date)&&o.status==="Delivered").length,n),0))}
+                    </span>
+                  </div>
+                </Card>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {tab==="inventory" && (
+          <div className="fade-in">
+            <SectionTitle title="All Branches Inventory"/>
+            <PeriodFilter mode={mode} setMode={setMode} customDate={customDate} setCustomDate={setCustomDate} customDateEnd={customDateEnd} setCustomDateEnd={setCustomDateEnd}/>
+            <input className="k-input" placeholder="🔍 Search vendor or product..." value={bossInvSearch} onChange={e=>setBossInvSearch(e.target.value)} style={{marginBottom:"16px"}}/>
+            {BRANCHES.map(b => {
+              // Stock is always cumulative — never date filtered
+              const vendorMap = buildBossStockMap(b, inventory, orders);
+              const vendorList = Object.keys(vendorMap).filter(v =>
+                !bossInvSearch ||
+                v.toLowerCase().includes(bossInvSearch.toLowerCase()) ||
+                Object.keys(vendorMap[v]).some(p=>p.toLowerCase().includes(bossInvSearch.toLowerCase()))
+              ).sort();
+              if (vendorList.length===0) return null;
+              return (
+                <div key={b} style={{marginBottom:"24px"}}>
+                  <div style={{background:"var(--navy)",borderRadius:"var(--r)",padding:"10px 16px",marginBottom:"10px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <p style={{fontFamily:"var(--display)",fontSize:"15px",fontWeight:800,color:"#fff"}}>{b} Branch</p>
+                    <span style={{fontSize:"11px",color:"rgba(255,255,255,.5)"}}>{vendorList.length} vendors</span>
+                  </div>
+                  {vendorList.map(vendor=>{
+                    const products = Object.entries(vendorMap[vendor])
+                      .filter(([name])=> !bossInvSearch || vendor.toLowerCase().includes(bossInvSearch.toLowerCase()) || name.toLowerCase().includes(bossInvSearch.toLowerCase()))
+                      .map(([name,s])=>{
+                        const remaining = b==="IDIMU"
+                          ? s.received - s.returnedTotal - s.transferredOut + s.transferredIn - s.delivered
+                          : s.transferredIn - s.transferredOut - s.delivered;
+                        return {name,...s,remaining};
+                      });
+                    if (products.length===0) return null;
+                    return (
+                      <div key={vendor} style={{marginBottom:"10px"}}>
+                        <p style={{fontSize:"11px",fontWeight:700,color:"var(--blue)",textTransform:"uppercase",letterSpacing:".06em",marginBottom:"6px",paddingLeft:"4px"}}>{vendor}</p>
+                        <div style={{display:"flex",flexDirection:"column",gap:"4px"}}>
+                          {products.map(item=>{
+                            const stats = b==="IDIMU"
+                              ? [["Received",item.received,"var(--green)"],["Sent Out",item.transferredOut,"var(--amber)"],["Delivered",item.delivered,"var(--blue)"],["Remaining",item.remaining,item.remaining<=0?"var(--red)":"var(--blue)"]]
+                              : [["Transferred In",item.transferredIn,"var(--green)"],["Delivered",item.delivered,"var(--blue)"],["Remaining",item.remaining,item.remaining<=0?"var(--red)":"var(--blue)"]];
+                            return (
+                              <div key={item.name} style={{
+                                background:item.remaining<=0?"#fef2f2":"#fff",
+                                border:`1.5px solid ${item.remaining<=0?"#fecaca":"var(--border)"}`,
+                                borderRadius:"var(--r-sm)", padding:"8px 14px",
+                                display:"flex", alignItems:"center", justifyContent:"space-between"
+                              }}>
+                                <p style={{fontSize:"12px",fontWeight:600,color:item.remaining<=0?"var(--red)":"var(--text)"}}>{item.name}</p>
+                                <div style={{display:"flex",gap:"10px",alignItems:"center"}}>
+                                  {stats.map(([label,val,color])=>(
+                                    <div key={label} style={{textAlign:"center",minWidth:"52px"}}>
+                                      <p style={{fontSize:"8px",color:"var(--text-faint)",fontWeight:600,marginBottom:"2px"}}>{label}</p>
+                                      <p style={{fontFamily:"var(--display)",fontSize:"14px",fontWeight:800,color}}>{val}</p>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {tab==="orders" && (
+          <div className="fade-in">
+            <SectionTitle title="All Orders"/>
+            <PeriodFilter mode={mode} setMode={setMode} customDate={customDate} setCustomDate={setCustomDate} customDateEnd={customDateEnd} setCustomDateEnd={setCustomDateEnd}/>
+            <div style={{ display:"flex", flexDirection:"column", gap:"8px" }}>
+              {fOrders.map(o => {
+                const st = ST[o.status]||ST.Failed;
+                return (
+                  <div key={o.id} style={{ background:"#fff", border:"1.5px solid var(--border)",
+                    borderRadius:"var(--r)", padding:"12px 14px", boxShadow:"var(--shadow)" }}>
+                    <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between" }}>
+                      <div>
+                        <div style={{ display:"flex", alignItems:"center", gap:"8px", marginBottom:"4px", flexWrap:"wrap" }}>
+                          <span style={{ fontSize:"13px", fontWeight:600 }}>{o.product}</span>
+                          <span style={{ fontSize:"10px", fontWeight:600, padding:"2px 8px", borderRadius:"99px",
+                            border:`1px solid ${st.border}`, background:st.bg, color:st.color }}>{o.status}</span>
+                        </div>
+                        <div style={{ display:"flex", alignItems:"center", gap:"8px" }}>
+                          <RiderAvatar name={o.rider} size={16}/>
+                          <span style={{ fontSize:"12px", color:"var(--text-dim)", fontWeight:500 }}>{o.rider}</span>
+                          <Tag label={o.branch} type="blue"/>
+                          <span style={{ fontSize:"11px", color:"var(--text-faint)" }}>{o.date}</span>
+                        </div>
+                      </div>
+                      <p style={{ fontFamily:"var(--display)", fontSize:"14px", fontWeight:700, marginLeft:"12px" }}>{fmt((o.cashValue||0)+(o.posValue||0))}</p>
+                    </div>
+                  </div>
+                );
+              })}
+              {fOrders.length===0 && <p style={{ textAlign:"center", padding:"48px 0", fontSize:"13px", color:"var(--text-faint)" }}>No orders in this period</p>}
+            </div>
+          </div>
+        )}
+
+      </div>
+    </div>
+  );
+}
+
+// ─── ROOT ─────────────────────────────────────────────────────────────────────
+
+// ─── INVENTORY ADMIN VIEW (IDIMU) ────────────────────────────────────────────
+function InventoryAdminView({ branch, onLogout }) {
+  const [tab, setTab] = useState("stock");
+  const [inventory, setInventory] = useState([]);
+  const [allOrders, setAllOrders] = useState([]);
+  const [syncing, setSyncing] = useState(true);
+  const [search, setSearch] = useState("");
+  const [mode, setMode] = useState("today");
+  const [customDate, setCustomDate] = useState("");
+  const [customDateEnd, setCustomDateEnd] = useState("");
+  const [saved, setSaved] = useState("");
+
+  // Forms
+  const [waybillInForm, setWaybillInForm]   = useState({ date: TODAY, vendor: VENDOR_NAMES[0], product: "", qty: "", note: "" });
+  const [waybillOutForm, setWaybillOutForm] = useState({ date: TODAY, vendor: VENDOR_NAMES[0], product: "", qty: "", note: "" });
+  const [transferForm, setTransferForm]     = useState({ date: TODAY, vendor: VENDOR_NAMES[0], product: "", qty: "", fromBranch: "IDIMU", toBranch: "KETU", note: "" });
+
+  useEffect(() => {
+    setSyncing(true);
+    Promise.all([sheetGet("Inventory"), sheetGet("Orders")])
+      .then(([inv, ord]) => { setInventory(inv); setAllOrders(ord.filter(o => o.status === "Delivered")); })
+      .catch(() => {}).finally(() => setSyncing(false));
+  }, []);
+
+  function saveEntry(type, form, resetForm) {
+    if (!form.vendor || !form.product || !form.qty) return;
+    const fromBranch = form.fromBranch || "IDIMU";
+    const toBranch   = form.toBranch || "";
+    const qty        = Number(form.qty) || 0;
+    // Build record cleanly — branch = where it originates
+    const rec = {
+      id: Date.now(), type,
+      branch: fromBranch,
+      date: form.date || TODAY,
+      vendor: form.vendor,
+      product: form.product,
+      qty,
+      note: form.note || "",
+      fromBranch,
+      toBranch,
+    };
+    setInventory(p => [rec, ...p]);
+    resetForm();
+    setSaved(type); setTimeout(() => setSaved(""), 3000);
+    sheetAdd("Inventory", rec).catch(() => {});
+    // For transfers, also save a transfer-in record for the receiving branch
+    if (type === "transfer-out" && toBranch) {
+      const recIn = {
+        ...rec,
+        id: Date.now() + 1,
+        type: "transfer-in",
+        branch: toBranch,
+        fromBranch,
+        toBranch,
+      };
+      setInventory(p => [recIn, ...p]);
+      sheetAdd("Inventory", recIn).catch(() => {});
+    }
+  }
+
+  // Build stock map for a given branch with optional date filter
+  function buildStockMap(targetBranch, filteredInv, filteredOrds) {
+    const inv  = filteredInv  || inventory;
+    const ords = filteredOrds || allOrders;
+    const vendorMap = {};
+
+    function ensure(v, n) {
+      if (!vendorMap[v]) vendorMap[v] = {};
+      if (!vendorMap[v][n]) vendorMap[v][n] = {
+        received: 0, delivered: 0, returnedTotal: 0,
+        transferredOut: 0, transferredIn: 0,
+        sentTo: {}, returnedFrom: {}, receivedFrom: {}
+      };
+    }
+
+    // Waybill in
+    inv.filter(i => i.branch === "IDIMU" && i.type === "waybill-in").forEach(i => {
+      const v = (i.vendor||"").trim(), n = (i.product||"").trim();
+      if (!v||!n) return;
+      ensure(v, n);
+      if (targetBranch === "IDIMU") vendorMap[v][n].received += Number(i.qty)||0;
+    });
+
+    // Waybill out — returned TO vendor (only IDIMU sends back to vendor)
+    inv.filter(i => i.type === "waybill-out" && i.branch === "IDIMU").forEach(i => {
+      const v=(i.vendor||"").trim(), n=(i.product||"").trim();
+      if (!v||!n) return;
+      ensure(v, n);
+      if (targetBranch === "IDIMU") vendorMap[v][n].returnedTotal += Number(i.qty)||0;
+    });
+
+    // Transfer out — any branch sending to another (deduct from sender)
+    inv.filter(i => i.type === "transfer-out").forEach(i => {
+      const v=(i.vendor||"").trim(), n=(i.product||"").trim();
+      if (!v||!n) return;
+      ensure(v, n);
+      const from = i.fromBranch || i.branch;
+      const to   = i.toBranch || "";
+      if (targetBranch === from) {
+        vendorMap[v][n].transferredOut += Number(i.qty)||0;
+        if (to) {
+          if (!vendorMap[v][n].sentTo[to]) vendorMap[v][n].sentTo[to] = 0;
+          vendorMap[v][n].sentTo[to] += Number(i.qty)||0;
+        }
+      }
+    });
+
+    // Transfer in — ONLY use transfer-in records for receiving branches
+    inv.filter(i => i.type === "transfer-in" && i.branch === targetBranch).forEach(i => {
+      const v=(i.vendor||"").trim(), n=(i.product||"").trim();
+      if (!v||!n) return;
+      ensure(v, n);
+      vendorMap[v][n].transferredIn += Number(i.qty)||0;
+      // Track which branch sent it
+      const from = i.fromBranch || "";
+      if (from) {
+        if (!vendorMap[v][n].receivedFrom) vendorMap[v][n].receivedFrom = {};
+        if (!vendorMap[v][n].receivedFrom[from]) vendorMap[v][n].receivedFrom[from] = 0;
+        vendorMap[v][n].receivedFrom[from] += Number(i.qty)||0;
+      }
+    });
+
+    // Deliveries
+    ords.filter(o => o.branch === targetBranch).forEach(o => {
+      const prods = typeof o.products==="string"?(()=>{try{return JSON.parse(o.products);}catch{return [];}})():(o.products||[]);
+      prods.forEach(p => {
+        const v=(p.vendor||"").trim(), n=(p.name||"").trim();
+        if (!v||!n||!vendorMap[v]?.[n]) return;
+        vendorMap[v][n].delivered += Number(p.qty)||1;
+      });
+    });
+
+    return vendorMap;
+  }
+
+  const TABS = [
+    { id: "stock",       label: "📦 All Stock" },
+    { id: "waybill-in",  label: "⬇ Waybill In" },
+    { id: "waybill-out", label: "⬆ Waybill Out" },
+    { id: "transfer",    label: "↔ Transfer" },
+    { id: "history",     label: "📋 History" },
+  ];
+
+  return (
+    <div style={{ minHeight: "100vh", background: "var(--bg)" }}>
+      <style>{GS}</style>
+      <TopNav subtitle="Inventory Admin · IDIMU" tabs={TABS} activeTab={tab} setActiveTab={setTab} onLogout={onLogout} syncing={syncing} />
+      <div style={{ maxWidth: "960px", margin: "0 auto", padding: "20px 16px" }}>
+
+        {/* ── ALL STOCK ── */}
+        {tab === "stock" && (
+          <div className="fade-in">
+            <SectionTitle title="Stock Overview — All Branches" />
+            <PeriodFilter mode={mode} setMode={setMode} customDate={customDate} setCustomDate={setCustomDate} customDateEnd={customDateEnd} setCustomDateEnd={setCustomDateEnd}/>
+            <input className="k-input" placeholder="🔍 Search vendor or product..." value={search} onChange={e => setSearch(e.target.value)} style={{ marginBottom: "16px" }} />
+            {BRANCHES.map(b => {
+              // Stock is always cumulative — never date filtered
+              const vendorMap = buildStockMap(b, inventory, allOrders);
+              const vendorList = Object.keys(vendorMap).filter(v =>
+                !search || v.toLowerCase().includes(search.toLowerCase()) ||
+                Object.keys(vendorMap[v]).some(p => p.toLowerCase().includes(search.toLowerCase()))
+              ).sort();
+              if (vendorList.length === 0) return null;
+              return (
+                <div key={b} style={{ marginBottom: "24px" }}>
+                  <div style={{ background: "var(--navy)", borderRadius: "var(--r)", padding: "10px 16px", marginBottom: "10px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <p style={{ fontFamily: "var(--display)", fontSize: "15px", fontWeight: 800, color: "#fff" }}>{b} Branch</p>
+                    <span style={{ fontSize: "11px", color: "rgba(255,255,255,.5)" }}>{vendorList.length} vendors</span>
+                  </div>
+                  {vendorList.map(vendor => {
+                    const products = Object.entries(vendorMap[vendor])
+                      .filter(([name]) => !search || vendor.toLowerCase().includes(search.toLowerCase()) || name.toLowerCase().includes(search.toLowerCase()))
+                      .map(([name, s]) => {
+                        const remaining = b === "IDIMU"
+                          ? s.received - s.returnedTotal - s.transferredOut + s.transferredIn - s.delivered
+                          : s.transferredIn - s.transferredOut - s.delivered;
+                        return { name, ...s, remaining };
+                      });
+                    return (
+                      <div key={vendor} style={{ marginBottom: "12px" }}>
+                        <p style={{ fontSize: "12px", fontWeight: 800, color: "var(--blue)", marginBottom: "6px", paddingLeft: "4px" }}>{vendor}</p>
+                        <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                          {products.map(item => (
+                            <div key={item.name} style={{
+                              background: item.remaining <= 0 ? "#fef2f2" : "#fff",
+                              border: `1.5px solid ${item.remaining <= 0 ? "#fecaca" : "var(--border)"}`,
+                              borderRadius: "var(--r-sm)", padding: "12px 14px",
+                            }}>
+                              {/* Product name + remaining */}
+                              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"10px" }}>
+                                <p style={{ fontSize: "13px", fontWeight: 700, color: item.remaining <= 0 ? "var(--red)" : "var(--text)" }}>{item.name}</p>
+                                <div style={{ textAlign:"center", background: item.remaining <= 0 ? "#fecaca" : "var(--blue-pale)", border:`1px solid ${item.remaining<=0?"#fca5a5":"var(--blue-pale2)"}`, borderRadius:"var(--r-sm)", padding:"4px 14px" }}>
+                                  <p style={{ fontSize:"9px", fontWeight:700, color:item.remaining<=0?"var(--red)":"var(--blue)", marginBottom:"1px" }}>Remaining</p>
+                                  <p style={{ fontFamily:"var(--display)", fontSize:"20px", fontWeight:800, color:item.remaining<=0?"var(--red)":"var(--blue)", lineHeight:1 }}>{item.remaining}</p>
+                                </div>
+                              </div>
+                              {/* Stats row */}
+                              {b === "IDIMU" ? (
+                                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:"8px" }}>
+                                  <div style={{ background:"var(--surface2)", border:"1px solid var(--border)", borderRadius:"var(--r-sm)", padding:"8px" }}>
+                                    <p style={{ fontSize:"10px", color:"var(--text-faint)", fontWeight:600, marginBottom:"4px" }}>Received</p>
+                                    <p style={{ fontFamily:"var(--display)", fontSize:"18px", fontWeight:800, color:"var(--green)" }}>{item.received}</p>
+                                  </div>
+                                  <div style={{ background:"var(--surface2)", border:"1px solid var(--border)", borderRadius:"var(--r-sm)", padding:"8px" }}>
+                                    <p style={{ fontSize:"10px", color:"var(--text-faint)", fontWeight:600, marginBottom:"4px" }}>Delivered</p>
+                                    <p style={{ fontFamily:"var(--display)", fontSize:"18px", fontWeight:800, color:"var(--blue)" }}>{item.delivered}</p>
+                                  </div>
+                                  <div style={{ background:"#fffbeb", border:"1px solid #fde68a", borderRadius:"var(--r-sm)", padding:"8px" }}>
+                                    <p style={{ fontSize:"10px", color:"var(--amber)", fontWeight:700, marginBottom:"4px" }}>Sent Out — {item.transferredOut}</p>
+                                    {Object.entries(item.sentTo||{}).map(([br, qty]) => (
+                                      <div key={br} style={{ display:"flex", justifyContent:"space-between" }}>
+                                        <span style={{ fontSize:"12px", color:"var(--text-dim)", fontWeight:600 }}>{br}</span>
+                                        <span style={{ fontSize:"12px", fontWeight:800, color:"var(--amber)" }}>{qty}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                  <div style={{ background:"var(--surface2)", border:"1px solid var(--border)", borderRadius:"var(--r-sm)", padding:"8px" }}>
+                                    <p style={{ fontSize:"10px", color:"var(--text-faint)", fontWeight:600, marginBottom:"4px" }}>Returned to Vendor</p>
+                                    <p style={{ fontFamily:"var(--display)", fontSize:"18px", fontWeight:800, color:"var(--text-dim)" }}>{item.returnedTotal}</p>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:"8px" }}>
+                                  <div style={{ background:"var(--surface2)", border:"1px solid var(--border)", borderRadius:"var(--r-sm)", padding:"8px" }}>
+                                    <p style={{ fontSize:"10px", color:"var(--text-faint)", fontWeight:600, marginBottom:"4px" }}>Received In</p>
+                                    <p style={{ fontFamily:"var(--display)", fontSize:"18px", fontWeight:800, color:"var(--green)" }}>{item.transferredIn}</p>
+                                    {Object.entries(item.receivedFrom||{}).map(([br,qty])=>(
+                                      <div key={br} style={{display:"flex",justifyContent:"space-between"}}>
+                                        <span style={{fontSize:"11px",color:"var(--text-dim)",fontWeight:600}}>{br}</span>
+                                        <span style={{fontSize:"11px",fontWeight:800,color:"var(--green)"}}>{qty}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                  <div style={{ background:"var(--surface2)", border:"1px solid var(--border)", borderRadius:"var(--r-sm)", padding:"8px" }}>
+                                    <p style={{ fontSize:"10px", color:"var(--text-faint)", fontWeight:600, marginBottom:"4px" }}>Delivered</p>
+                                    <p style={{ fontFamily:"var(--display)", fontSize:"18px", fontWeight:800, color:"var(--blue)" }}>{item.delivered}</p>
+                                  </div>
+                                  {item.transferredOut > 0 && (
+                                    <div style={{ background:"#fffbeb", border:"1px solid #fde68a", borderRadius:"var(--r-sm)", padding:"8px" }}>
+                                      <p style={{ fontSize:"10px", color:"var(--amber)", fontWeight:700, marginBottom:"4px" }}>Sent Out — {item.transferredOut}</p>
+                                      {Object.entries(item.sentTo||{}).map(([br,qty])=>(
+                                        <div key={br} style={{display:"flex",justifyContent:"space-between"}}>
+                                          <span style={{fontSize:"11px",color:"var(--text-dim)",fontWeight:600}}>{br}</span>
+                                          <span style={{fontSize:"11px",fontWeight:800,color:"var(--amber)"}}>{qty}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* ── WAYBILL IN ── */}
+        {tab === "waybill-in" && (
+          <div className="fade-in">
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+              <SectionTitle title="Waybill In" sub="Products received from vendors" />
+              {saved === "waybill-in" && <Tag label="✓ Saved" type="green" />}
+            </div>
+            <Card accent="blue">
+              <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--blue)", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: "14px" }}>Log Stock Received</p>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "12px" }}>
+                <div><label className="k-label">Date</label><input type="date" className="k-input" value={waybillInForm.date} onChange={e => setWaybillInForm(f => ({ ...f, date: e.target.value }))} /></div>
+                <div>
+                  <label className="k-label">Vendor</label>
+                  <select className="k-input" value={waybillInForm.vendor} onChange={e => setWaybillInForm(f => ({ ...f, vendor: e.target.value, product: "" }))}>
+                    {VENDOR_NAMES.map(v => <option key={v}>{v}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="k-label">Product</label>
+                  <select className="k-input" value={waybillInForm.product} onChange={e => setWaybillInForm(f => ({ ...f, product: e.target.value }))} disabled={!waybillInForm.vendor}>
+                    <option value="">Select product...</option>
+                    {(VENDORS[waybillInForm.vendor] || []).map(p => <option key={p}>{p}</option>)}
+                  </select>
+                </div>
+                <div><label className="k-label">Quantity</label><input type="number" className="k-input" min="1" placeholder="0" value={waybillInForm.qty} onChange={e => setWaybillInForm(f => ({ ...f, qty: e.target.value }))} /></div>
+                <div style={{ gridColumn: "1/-1" }}><label className="k-label">Note (optional)</label><input className="k-input" placeholder="Waybill no., remarks..." value={waybillInForm.note} onChange={e => setWaybillInForm(f => ({ ...f, note: e.target.value }))} /></div>
+              </div>
+              <button disabled={!waybillInForm.product || !waybillInForm.qty}
+                onClick={() => saveEntry("waybill-in", waybillInForm, () => setWaybillInForm({ date: TODAY, vendor: VENDOR_NAMES[0], product: "", qty: "", note: "" }))}
+                style={{ width: "100%", padding: "10px", background: !waybillInForm.product || !waybillInForm.qty ? "#f1f5f9" : "var(--green)", border: "none", borderRadius: "var(--r-sm)", color: !waybillInForm.product || !waybillInForm.qty ? "#94a3b8" : "#fff", fontFamily: "var(--display)", fontSize: "13px", fontWeight: 700, cursor: !waybillInForm.product || !waybillInForm.qty ? "not-allowed" : "pointer" }}>
+                Save Waybill In
+              </button>
+            </Card>
+            <PeriodFilter mode={mode} setMode={setMode} customDate={customDate} setCustomDate={setCustomDate} customDateEnd={customDateEnd} setCustomDateEnd={setCustomDateEnd} />
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+              {filterByPeriod(inventory.filter(i => i.type === "waybill-in"), mode, customDate, customDateEnd).map(i => (
+                <div key={i.id} style={{ background: "#fff", border: "1.5px solid var(--border)", borderRadius: "var(--r-sm)", padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", boxShadow: "var(--shadow)" }}>
+                  <div>
+                    <p style={{ fontSize: "13px", fontWeight: 600 }}>{i.product}</p>
+                    <p style={{ fontSize: "11px", color: "var(--text-faint)", marginTop: "2px" }}>{i.vendor} · {i.date}{i.note ? ` · ${i.note}` : ""}</p>
+                  </div>
+                  <Tag label={`+${i.qty}`} type="green" />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── WAYBILL OUT ── */}
+        {tab === "waybill-out" && (
+          <div className="fade-in">
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+              <SectionTitle title="Waybill Out" sub="Products returned to vendors" />
+              {saved === "waybill-out" && <Tag label="✓ Saved" type="green" />}
+            </div>
+            <Card accent="blue">
+              <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--blue)", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: "14px" }}>Log Return to Vendor</p>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "12px" }}>
+                <div><label className="k-label">Date</label><input type="date" className="k-input" value={waybillOutForm.date} onChange={e => setWaybillOutForm(f => ({ ...f, date: e.target.value }))} /></div>
+                <div>
+                  <label className="k-label">Vendor</label>
+                  <select className="k-input" value={waybillOutForm.vendor} onChange={e => setWaybillOutForm(f => ({ ...f, vendor: e.target.value, product: "" }))}>
+                    {VENDOR_NAMES.map(v => <option key={v}>{v}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="k-label">Product</label>
+                  <select className="k-input" value={waybillOutForm.product} onChange={e => setWaybillOutForm(f => ({ ...f, product: e.target.value }))} disabled={!waybillOutForm.vendor}>
+                    <option value="">Select product...</option>
+                    {(VENDORS[waybillOutForm.vendor] || []).map(p => <option key={p}>{p}</option>)}
+                  </select>
+                </div>
+                <div><label className="k-label">Quantity</label><input type="number" className="k-input" min="1" placeholder="0" value={waybillOutForm.qty} onChange={e => setWaybillOutForm(f => ({ ...f, qty: e.target.value }))} /></div>
+                <div style={{ gridColumn: "1/-1" }}><label className="k-label">Note (optional)</label><input className="k-input" placeholder="Reason, waybill no..." value={waybillOutForm.note} onChange={e => setWaybillOutForm(f => ({ ...f, note: e.target.value }))} /></div>
+              </div>
+              <button disabled={!waybillOutForm.product || !waybillOutForm.qty}
+                onClick={() => saveEntry("waybill-out", waybillOutForm, () => setWaybillOutForm({ date: TODAY, vendor: VENDOR_NAMES[0], product: "", qty: "", note: "" }))}
+                style={{ width: "100%", padding: "10px", background: !waybillOutForm.product || !waybillOutForm.qty ? "#f1f5f9" : "var(--amber)", border: "none", borderRadius: "var(--r-sm)", color: !waybillOutForm.product || !waybillOutForm.qty ? "#94a3b8" : "#fff", fontFamily: "var(--display)", fontSize: "13px", fontWeight: 700, cursor: !waybillOutForm.product || !waybillOutForm.qty ? "not-allowed" : "pointer" }}>
+                Save Waybill Out
+              </button>
+            </Card>
+            <PeriodFilter mode={mode} setMode={setMode} customDate={customDate} setCustomDate={setCustomDate} customDateEnd={customDateEnd} setCustomDateEnd={setCustomDateEnd} />
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+              {filterByPeriod(inventory.filter(i => i.type === "waybill-out"), mode, customDate, customDateEnd).map(i => (
+                <div key={i.id} style={{ background: "#fff", border: "1.5px solid var(--border)", borderRadius: "var(--r-sm)", padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", boxShadow: "var(--shadow)" }}>
+                  <div>
+                    <p style={{ fontSize: "13px", fontWeight: 600 }}>{i.product}</p>
+                    <p style={{ fontSize: "11px", color: "var(--text-faint)", marginTop: "2px" }}>{i.vendor} · {i.date}{i.note ? ` · ${i.note}` : ""}</p>
+                  </div>
+                  <Tag label={`-${i.qty}`} type="amber" />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── TRANSFER ── */}
+        {tab === "transfer" && (
+          <div className="fade-in">
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+              <SectionTitle title="Transfer Stock" sub="Move products between branches" />
+              {saved === "transfer-out" && <Tag label="✓ Transferred" type="green" />}
+            </div>
+            <Card accent="blue">
+              <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--blue)", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: "14px" }}>Log Transfer</p>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "12px" }}>
+                <div><label className="k-label">Date</label><input type="date" className="k-input" value={transferForm.date} onChange={e => setTransferForm(f => ({ ...f, date: e.target.value }))} /></div>
+                <div>
+                  <label className="k-label">Vendor</label>
+                  <select className="k-input" value={transferForm.vendor} onChange={e => setTransferForm(f => ({ ...f, vendor: e.target.value, product: "" }))}>
+                    {VENDOR_NAMES.map(v => <option key={v}>{v}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="k-label">Product</label>
+                  <select className="k-input" value={transferForm.product} onChange={e => setTransferForm(f => ({ ...f, product: e.target.value }))} disabled={!transferForm.vendor}>
+                    <option value="">Select product...</option>
+                    {(VENDORS[transferForm.vendor] || []).map(p => <option key={p}>{p}</option>)}
+                  </select>
+                </div>
+                <div><label className="k-label">Quantity</label><input type="number" className="k-input" min="1" placeholder="0" value={transferForm.qty} onChange={e => setTransferForm(f => ({ ...f, qty: e.target.value }))} /></div>
+                <div>
+                  <label className="k-label">From Branch</label>
+                  <select className="k-input" value={transferForm.fromBranch} onChange={e => setTransferForm(f => ({ ...f, fromBranch: e.target.value }))}>
+                    {BRANCHES.map(b => <option key={b}>{b}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="k-label">To Branch</label>
+                  <select className="k-input" value={transferForm.toBranch} onChange={e => setTransferForm(f => ({ ...f, toBranch: e.target.value }))}>
+                    {BRANCHES.filter(b => b !== transferForm.fromBranch).map(b => <option key={b}>{b}</option>)}
+                  </select>
+                </div>
+                <div style={{ gridColumn: "1/-1" }}><label className="k-label">Note (optional)</label><input className="k-input" placeholder="Any remarks..." value={transferForm.note} onChange={e => setTransferForm(f => ({ ...f, note: e.target.value }))} /></div>
+              </div>
+              {(() => {
+                // Check remaining stock in fromBranch
+                const fromMap = buildStockMap(transferForm.fromBranch, inventory, allOrders);
+                const fromProduct = fromMap[transferForm.vendor]?.[transferForm.product];
+                const fromRemaining = fromProduct
+                  ? (transferForm.fromBranch === "IDIMU"
+                      ? fromProduct.received - fromProduct.returnedTotal - fromProduct.transferredOut + fromProduct.transferredIn - fromProduct.delivered
+                      : fromProduct.transferredIn - fromProduct.transferredOut - fromProduct.delivered)
+                  : 0;
+                const transferQty = Number(transferForm.qty) || 0;
+                const overStock = transferQty > fromRemaining && transferForm.product && transferQty > 0;
+                const disabled = !transferForm.product || !transferForm.qty || transferForm.fromBranch === transferForm.toBranch || overStock;
+                return (
+                  <>
+                    {overStock && (
+                      <div style={{ background:"#fef2f2", border:"1.5px solid #fecaca", borderRadius:"var(--r-sm)", padding:"10px 14px", marginBottom:"12px" }}>
+                        <p style={{ fontSize:"12px", fontWeight:600, color:"var(--red)" }}>⚠ Not enough stock</p>
+                        <p style={{ fontSize:"11px", color:"#f87171", marginTop:"2px" }}>
+                          {transferForm.fromBranch} only has {fromRemaining} units of {transferForm.product} remaining. You are trying to transfer {transferQty}.
+                        </p>
+                      </div>
+                    )}
+                    {transferForm.product && fromRemaining >= 0 && !overStock && transferForm.qty && (
+                      <div style={{ background:"var(--blue-pale)", border:"1.5px solid var(--blue-pale2)", borderRadius:"var(--r-sm)", padding:"8px 14px", marginBottom:"12px", display:"flex", justifyContent:"space-between" }}>
+                        <span style={{ fontSize:"12px", color:"var(--text-dim)" }}>{transferForm.fromBranch} remaining after transfer</span>
+                        <span style={{ fontFamily:"var(--display)", fontSize:"13px", fontWeight:700, color:"var(--blue)" }}>{fromRemaining - transferQty}</span>
+                      </div>
+                    )}
+                    <button disabled={disabled}
+                      onClick={() => saveEntry("transfer-out", transferForm, () => setTransferForm({ date: TODAY, vendor: VENDOR_NAMES[0], product: "", qty: "", fromBranch: "IDIMU", toBranch: "KETU", note: "" }))}
+                      style={{ width:"100%", padding:"10px", background:disabled?"#f1f5f9":"var(--blue)", border:"none", borderRadius:"var(--r-sm)", color:disabled?"#94a3b8":"#fff", fontFamily:"var(--display)", fontSize:"13px", fontWeight:700, cursor:disabled?"not-allowed":"pointer" }}>
+                      Confirm Transfer
+                    </button>
+                  </>
+                );
+              })()}
+            </Card>
+            <PeriodFilter mode={mode} setMode={setMode} customDate={customDate} setCustomDate={setCustomDate} customDateEnd={customDateEnd} setCustomDateEnd={setCustomDateEnd} />
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+              {filterByPeriod(inventory.filter(i => i.type === "transfer-out"), mode, customDate, customDateEnd).map(i => (
+                <div key={i.id} style={{ background: "#fff", border: "1.5px solid var(--border)", borderRadius: "var(--r-sm)", padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", boxShadow: "var(--shadow)" }}>
+                  <div>
+                    <p style={{ fontSize: "13px", fontWeight: 600 }}>{i.product}</p>
+                    <p style={{ fontSize: "11px", color: "var(--text-faint)", marginTop: "2px" }}>{i.vendor} · {i.fromBranch} → {i.toBranch} · {i.date}</p>
+                  </div>
+                  <Tag label={`${i.qty} units`} type="blue" />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── HISTORY ── */}
+        {tab === "history" && (
+          <div className="fade-in">
+            <SectionTitle title="Full History" />
+            <PeriodFilter mode={mode} setMode={setMode} customDate={customDate} setCustomDate={setCustomDate} customDateEnd={customDateEnd} setCustomDateEnd={setCustomDateEnd} />
+            <input className="k-input" placeholder="🔍 Search product or vendor..." value={search} onChange={e => setSearch(e.target.value)} style={{ marginBottom: "12px" }} />
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+              {filterByPeriod(inventory, mode, customDate, customDateEnd)
+                .filter(i => !search || i.product?.toLowerCase().includes(search.toLowerCase()) || i.vendor?.toLowerCase().includes(search.toLowerCase()))
+                .sort((a, b) => b.id - a.id)
+                .map(i => {
+                  const typeMap = { "waybill-in": ["⬇ Waybill In", "green"], "waybill-out": ["⬆ Waybill Out", "amber"], "transfer-out": ["→ Transfer Out", "blue"], "transfer-in": ["← Transfer In", "blue"] };
+                  const [label, type] = typeMap[i.type] || ["?", "default"];
+                  return (
+                    <div key={i.id} style={{ background: "#fff", border: "1.5px solid var(--border)", borderRadius: "var(--r-sm)", padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", boxShadow: "var(--shadow)" }}>
+                      <div>
+                        <p style={{ fontSize: "13px", fontWeight: 600 }}>{i.product}</p>
+                        <p style={{ fontSize: "11px", color: "var(--text-faint)", marginTop: "2px" }}>
+                          {i.vendor} · {i.branch} · {i.date}
+                          {i.type === "transfer-out" ? ` → ${i.toBranch}` : ""}
+                          {i.note ? ` · ${i.note}` : ""}
+                        </p>
+                      </div>
+                      <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                        <Tag label={label} type={type} />
+                        <span style={{ fontFamily: "var(--display)", fontSize: "13px", fontWeight: 700, color: "var(--text)" }}>{i.qty}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── INVENTORY VIEW ONLY (KETU / AJA) ────────────────────────────────────────
+function InventoryViewOnly({ branch, onLogout }) {
+  const [inventory, setInventory] = useState([]);
+  const [allOrders, setAllOrders] = useState([]);
+  const [syncing, setSyncing]     = useState(true);
+  const [search, setSearch]       = useState("");
+  const [mode, setMode]           = useState("all");
+  const [customDate, setCustomDate]       = useState("");
+  const [customDateEnd, setCustomDateEnd] = useState("");
+
+  useEffect(() => {
+    setSyncing(true);
+    Promise.all([sheetGet("Inventory"), sheetGet("Orders")])
+      .then(([inv, ord]) => { setInventory(inv); setAllOrders(ord.filter(o => o.status === "Delivered" && o.branch === branch)); })
+      .catch(() => {}).finally(() => setSyncing(false));
+  }, [branch]);
+
+  // Stock is always cumulative — never date filtered
+  const isIDIMU = branch === "IDIMU";
+  const vendorMap = {};
+  function ensureV(v,n){ if(!vendorMap[v])vendorMap[v]={}; if(!vendorMap[v][n])vendorMap[v][n]={received:0,transferredIn:0,transferredOut:0,delivered:0}; }
+
+  if (isIDIMU) {
+    inventory.filter(i => i.branch === "IDIMU" && i.type === "waybill-in").forEach(i => {
+      const v=(i.vendor||"").trim(), n=(i.product||"").trim();
+      if(!v||!n) return; ensureV(v,n);
+      vendorMap[v][n].received += Number(i.qty)||0;
+    });
+    inventory.filter(i => i.branch === "IDIMU" && i.type === "transfer-in").forEach(i => {
+      const v=(i.vendor||"").trim(), n=(i.product||"").trim();
+      if(!v||!n) return; ensureV(v,n);
+      vendorMap[v][n].transferredIn += Number(i.qty)||0;
+    });
+    inventory.filter(i => i.type === "transfer-out" && (i.fromBranch === "IDIMU" || i.branch === "IDIMU")).forEach(i => {
+      const v=(i.vendor||"").trim(), n=(i.product||"").trim();
+      if(!v||!n||!vendorMap[v]?.[n]) return;
+      vendorMap[v][n].transferredOut += Number(i.qty)||0;
+    });
+    // Waybill out (returned to vendor) reduces IDIMU stock
+    inventory.filter(i => i.branch === "IDIMU" && i.type === "waybill-out").forEach(i => {
+      const v=(i.vendor||"").trim(), n=(i.product||"").trim();
+      if(!v||!n||!vendorMap[v]?.[n]) return;
+      vendorMap[v][n].transferredOut += Number(i.qty)||0;
+    });
+  } else {
+    inventory.filter(i => i.branch === branch && i.type === "transfer-in").forEach(i => {
+      const v=(i.vendor||"").trim(), n=(i.product||"").trim();
+      if(!v||!n) return; ensureV(v,n);
+      vendorMap[v][n].transferredIn += Number(i.qty)||0;
+    });
+    inventory.filter(i => i.type === "transfer-out" && (i.fromBranch === branch || i.branch === branch)).forEach(i => {
+      const v=(i.vendor||"").trim(), n=(i.product||"").trim();
+      if(!v||!n||!vendorMap[v]?.[n]) return;
+      vendorMap[v][n].transferredOut += Number(i.qty)||0;
+    });
+  }
+  // All deliveries ever (not filtered)
+  allOrders.forEach(o => {
+    const prods = typeof o.products === "string" ? (() => { try { return JSON.parse(o.products); } catch { return []; } })() : (o.products || []);
+    prods.forEach(p => {
+      const v = (p.vendor || "").trim(), n = (p.name || "").trim();
+      if (!v || !n || !vendorMap[v]?.[n]) return;
+      vendorMap[v][n].delivered += Number(p.qty) || 1;
+    });
+  });
+
+  const vendorList = Object.keys(vendorMap).filter(v =>
+    !search || v.toLowerCase().includes(search.toLowerCase()) ||
+    Object.keys(vendorMap[v]).some(p => p.toLowerCase().includes(search.toLowerCase()))
+  ).sort();
+
+  const TABS = [{ id: "stock", label: "Stock" }];
+
+  return (
+    <div style={{ minHeight: "100vh", background: "var(--bg)" }}>
+      <style>{GS}</style>
+      <TopNav subtitle={`${branch} · Inventory (View Only)`} tabs={TABS} activeTab="stock" setActiveTab={() => {}} onLogout={onLogout} syncing={syncing} />
+      <div style={{ maxWidth: "960px", margin: "0 auto", padding: "20px 16px" }}>
+        <SectionTitle title={`${branch} Branch Stock`} sub="Read only — managed by IDIMU inventory admin" />
+        <PeriodFilter mode={mode} setMode={setMode} customDate={customDate} setCustomDate={setCustomDate} customDateEnd={customDateEnd} setCustomDateEnd={setCustomDateEnd}/>
+        <input className="k-input" placeholder="🔍 Search vendor or product..." value={search} onChange={e => setSearch(e.target.value)} style={{ marginBottom: "16px" }} />
+        {vendorList.length === 0 && <p style={{ textAlign: "center", padding: "48px 0", fontSize: "13px", color: "var(--text-faint)" }}>No stock transferred to {branch} yet</p>}
+        {vendorList.map(vendor => {
+          const products = Object.entries(vendorMap[vendor])
+            .filter(([name]) => !search || vendor.toLowerCase().includes(search.toLowerCase()) || name.toLowerCase().includes(search.toLowerCase()))
+            .map(([name, s]) => ({
+                name, ...s,
+                remaining: isIDIMU
+                  ? s.received + s.transferredIn - s.transferredOut - s.delivered
+                  : s.transferredIn - s.transferredOut - s.delivered
+              }));
+          if (products.length === 0) return null;
+          return (
+            <div key={vendor} style={{ marginBottom: "16px" }}>
+              <p style={{ fontSize: "13px", fontWeight: 800, color: "var(--navy)", marginBottom: "8px", paddingLeft: "2px" }}>{vendor}</p>
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                {products.map(item => {
+                  const stats = isIDIMU
+                    ? [["Received", item.received, "var(--green)"], ["Sent Out", item.transferredOut, "var(--amber)"], ["Delivered", item.delivered, "var(--blue)"]]
+                    : [["Transferred In", item.transferredIn, "var(--green)"], ["Sent Out", item.transferredOut, "var(--amber)"], ["Delivered", item.delivered, "var(--blue)"]];
+                  return (
+                    <div key={item.name} style={{
+                      background: item.remaining <= 0 ? "#fef2f2" : "#fff",
+                      border: `1.5px solid ${item.remaining <= 0 ? "#fecaca" : "var(--border)"}`,
+                      borderRadius: "var(--r-sm)", padding: "10px 14px",
+                      display: "flex", alignItems: "center", justifyContent: "space-between"
+                    }}>
+                      <p style={{ fontSize: "13px", fontWeight: 600, color: item.remaining <= 0 ? "var(--red)" : "var(--text)" }}>{item.name}</p>
+                      <div style={{ display: "flex", gap: "14px", alignItems: "center" }}>
+                        {stats.map(([label, val, color]) => (
+                          <div key={label} style={{ textAlign: "center", minWidth: "60px" }}>
+                            <p style={{ fontSize: "8px", color: "var(--text-faint)", fontWeight: 600, marginBottom: "2px" }}>{label}</p>
+                            <p style={{ fontFamily: "var(--display)", fontSize: "14px", fontWeight: 800, color }}>{val}</p>
+                          </div>
+                        ))}
+                        <div style={{ textAlign: "center", background: item.remaining <= 0 ? "#fecaca" : "var(--blue-pale)", border: `1px solid ${item.remaining <= 0 ? "#fca5a5" : "var(--blue-pale2)"}`, borderRadius: "var(--r-sm)", padding: "6px 14px", minWidth: "64px" }}>
+                          <p style={{ fontSize: "8px", fontWeight: 700, color: item.remaining <= 0 ? "var(--red)" : "var(--blue)", marginBottom: "2px" }}>Remaining</p>
+                          <p style={{ fontFamily: "var(--display)", fontSize: "18px", fontWeight: 800, color: item.remaining <= 0 ? "var(--red)" : "var(--blue)", lineHeight: 1 }}>{item.remaining}</p>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+export default function App() {
+  const [session, setSession] = useState(() => {
+    try {
+      const saved = sessionStorage.getItem("kyne_session");
+      return saved ? JSON.parse(saved) : null;
+    } catch { return null; }
+  });
+
+  function handleLogin(role, branch) {
+    const s = { role, branch };
+    setSession(s);
+    try { sessionStorage.setItem("kyne_session", JSON.stringify(s)); } catch {}
+  }
+
+  function handleLogout() {
+    setSession(null);
+    try { sessionStorage.removeItem("kyne_session"); } catch {}
+  }
+
+  if (!session) return <LoginScreen onLogin={handleLogin}/>;
+  if (session.role === "boss")            return <BossView           onLogout={handleLogout}/>;
+  if (session.role === "manager")         return <ManagerView        branch={session.branch} onLogout={handleLogout}/>;
+  if (session.role === "rider-manager")   return <RiderManagerView   branch={session.branch} onLogout={handleLogout}/>;
+  if (session.role === "inventory-admin") return <InventoryAdminView branch={session.branch} onLogout={handleLogout}/>;
+  if (session.role === "inventory-view")  return <InventoryViewOnly  branch={session.branch} onLogout={handleLogout}/>;
+}
