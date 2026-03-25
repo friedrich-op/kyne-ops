@@ -1276,6 +1276,7 @@ function RiderManagerView({ branch, onLogout }) {
                             ))}
                           </div>
                         </div>
+                        </div>
                         <span style={{ fontFamily: "var(--display)", fontSize: "16px", fontWeight: 800, color: "var(--blue)", marginLeft: "12px", flexShrink: 0, alignSelf:"flex-start" }}>
                           {fmt(getProducts(o).reduce((s, p) => s + (Number(p.price) || 0), 0))}
                         </span>
