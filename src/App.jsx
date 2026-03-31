@@ -89,7 +89,7 @@ const VENDORS = {
   "STYLE": ["Mag black","Mag gold","Vintage black","Vintage red","Chenxi","Oulm","Fusili silver","Fusili gold","Bos design","Mag leather"],
   "LOLLYTOS": ["Small portable juicer","Electronic lunch box","Electric mug","Pulse massager","Wheel roller","Fruit press","Toothbrush sterilizer","Solar camp light","Juicing cup","Leakage fix tape","Rechargeable juice","Mini flask","Mini massager"],
   "KENDUMA": ["Pet collar","Pet spray","OLEVS wristwatch"],
-  "Madam Gift": ["Building block","Magnetic drawing board","Finger Arithmetic"],
+  "Madam Gift": ["Building block","Magnetic drawing board","Finger Arithmetic","Bubble gun"],
   "KING ROYCE": ["Reachable car charger"],
   "KYNE-RANDOM": ["Random energy capsule"],
   "SMART CLEANSER KYNE": ["Smart Cleanser","Sanora capsule","Sanora balm"],
@@ -109,7 +109,16 @@ const VENDORS = {
   "29 carat": ["OLEVS wristwatch"],
   "EDDY": ["Soursop","Sealant spray","Mosquito swatter","Aloe vera gel","Sleep mask"],
   "LAGOS BATCH AFROMEDIA": ["Erabab capsule","Hamachin tea","Hamachin capsule"],
-  "DR MIKE": ["Sureza capsule","Fayamax cleanser","Fayamax capsule","Fayamax oil","Hyperform capsule","Hyperform tea"],
+  "DR MIKE": ["Sureza capsule","Sureza","Fayamax cleanser","Fayamax capsule","Fayamax tea","Fayamax oil","Hyperform capsule","Hyperform tea","Hyperfom capsule","Hyperfom tea"],
+  "PAVENA": ["Retinol Serum","Retinol Cream","Vitamin C Soap","Salicylic Soap","Niacinamide Soap","Vibrant Sunscreen","Estlein Sunscreen","Retinol Eye cream","Cayman Eye cream","Collagen Eye Mask","Retinol Mask"],
+  "KYNE LENSTONE": ["Lenstone capsule"],
+  "DSP": ["Snore Spray","Mask","Nylon","Batana oil","Batana Cream","Front Hair & scalp","Eelhoe vitamin c"],
+  "ZEMA": ["Orange exfoliating gel"],
+  "KIDS MULTIVITAMIN": ["Kids multivitamin gummies"],
+  "MEN GUMMIES": ["Men power gummies"],
+  "ZEGOODIES": ["Big solar lamp","Small solar lamp","Green flat tummy gummies","Red flat tummy gummies","Apple Cider gummies","Keto Active gummies"],
+  "LOPGRADE": ["Yoxier scar repair cream"],
+  "CHARZZY GROUP": ["Gotura","Latein capsule","Charrzy capsule"],
 };
 const VENDOR_NAMES = Object.keys(VENDORS);
 
@@ -1275,7 +1284,6 @@ function RiderManagerView({ branch, onLogout }) {
                               </div>
                             ))}
                           </div>
-                        </div>
                         </div>
                         <span style={{ fontFamily: "var(--display)", fontSize: "16px", fontWeight: 800, color: "var(--blue)", marginLeft: "12px", flexShrink: 0, alignSelf:"flex-start" }}>
                           {fmt(getProducts(o).reduce((s, p) => s + (Number(p.price) || 0), 0))}
