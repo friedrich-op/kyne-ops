@@ -107,9 +107,9 @@ const VENDORS = {
   "HYPERFIT": ["Egg cracker","Pepper spray","Combat pouch"],
   "OPTIMAL HORIZON": ["Natural erect","Strike hard"],
   "29 carat": ["OLEVS wristwatch"],
-  "EDDY": ["Soursop","Sealant spray","Mosquito swatter","Aloe vera gel","Sleep mask"],
+  "EDDY": ["Soursop","Soursoup","Sealant spray","Mosquito swatter","Aloe vera gel","Sleep mask"],
   "LAGOS BATCH AFROMEDIA": ["Erabab capsule","Hamachin tea","Hamachin capsule"],
-  "DR MIKE": ["Sureza capsule","Sureza","Fayamax cleanser","Fayamax capsule","Fayamax tea","Fayamax oil","Hyperform capsule","Hyperform tea","Hyperfom capsule","Hyperfom tea"],
+  "DR MIKE": ["Sureza capsule","Sureza","Fayamax cleanser","Fayamax capsule","Fayamax oil","Fayamax tea","Hyperform capsule","Hyperfom capsule","Hyperform tea","Hyperfom tea"],
   "PAVENA": ["Retinol Serum","Retinol Cream","Vitamin C Soap","Salicylic Soap","Niacinamide Soap","Vibrant Sunscreen","Estlein Sunscreen","Retinol Eye cream","Cayman Eye cream","Collagen Eye Mask","Retinol Mask"],
   "KYNE LENSTONE": ["Lenstone capsule"],
   "DSP": ["Snore Spray","Mask","Nylon","Batana oil","Batana Cream","Front Hair & scalp","Eelhoe vitamin c"],
@@ -118,7 +118,7 @@ const VENDORS = {
   "MEN GUMMIES": ["Men power gummies"],
   "ZEGOODIES": ["Big solar lamp","Small solar lamp","Green flat tummy gummies","Red flat tummy gummies","Apple Cider gummies","Keto Active gummies"],
   "LOPGRADE": ["Yoxier scar repair cream"],
-  "CHARZZY GROUP": ["Gotura","Latein capsule","Charrzy capsule"],
+  "CHARZZY GROUP": ["Gotura","Latein capsule","Charzzy capsule"],
 };
 const VENDOR_NAMES = Object.keys(VENDORS);
 
@@ -1284,6 +1284,7 @@ function RiderManagerView({ branch, onLogout }) {
                               </div>
                             ))}
                           </div>
+                        </div>
                         </div>
                         <span style={{ fontFamily: "var(--display)", fontSize: "16px", fontWeight: 800, color: "var(--blue)", marginLeft: "12px", flexShrink: 0, alignSelf:"flex-start" }}>
                           {fmt(getProducts(o).reduce((s, p) => s + (Number(p.price) || 0), 0))}
