@@ -7,10 +7,10 @@ const RIDERS = {
   IDIMU: [
     "Abbey", "Abosede", "Tosin", "Emmanuel", "Fathia", "Ganiu",
     "Prince", "Mayowa", "Mr Chika", "Mr Ibrahim", "Mr Paul", "Mr Peter",
-    "Ololade", "Damilola", "Oyindamola", "Philip", "Solomon", "Teemah",
+    "Damilola", "Oyindamola", "Philip", "Solomon", "Teemah",
     "Bright", "Jeremiah", "Joseph", "Tommy", "Mr Tobi", "Mr Ade",
     "Segun", "Mr Kingsley", "Mr Ajayi", "Mr John", "Great God",
-    "Mr Sunday", "Mr Kenny", "Olawunmi", "Mr Wilson", "Mr Idris",
+    "Mr Sunday", "Mr Kenny", "Olawunmi", "Mr Wilson", "Mr Idris", "Azeez",
   ],
   KETU: ["Semilore", "Miracle", "Yusuf", "Dickson", "Tony", "Habeb", "Lawal", "Ayomide"],
 };
