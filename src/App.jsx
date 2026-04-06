@@ -886,9 +886,8 @@ function RiderManagerView({ branch, onLogout }) {
 
   const todayOrders  = filterByPeriod(orders, "today", "");
   const unassigned   = todayOrders.filter(o => o.status === "Unassigned");
-  // When a search query is active in update tab, search ALL orders (ignore period filter)
-  const updateQ = updateSearch.trim().toLowerCase();
-  const updateBase = updateQ ? orders : filterByPeriod(orders, mode, customDate, customDateEnd);
+  const updateQ      = updateSearch.trim().toLowerCase();
+  const updateBase   = updateQ ? orders : filterByPeriod(orders, mode, customDate, customDateEnd);
   const filtered     = filterByPeriod(orders, mode, customDate, customDateEnd);
   const pending      = updateBase.filter(o => o.status === "Pending");
   const delivered    = updateBase.filter(o => o.status === "Delivered");
@@ -1102,11 +1101,12 @@ function RiderManagerView({ branch, onLogout }) {
                         return phone.includes(q) || name.includes(q);
                       })
                     : unassigned;
-                  return assignFiltered.length === 0 ? (
+                  if (assignFiltered.length === 0) return (
                     <div style={{ background: "#fff", border: "1.5px solid var(--border)", borderRadius: "var(--r)", padding: "20px", textAlign: "center" }}>
                       <p style={{ fontSize: "13px", color: "var(--text-faint)" }}>No orders match "<strong>{phoneSearch}</strong>"</p>
                     </div>
-                  ) : (
+                  );
+                  return (
                 <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                 {assignFiltered.map(o => {
                   const prods = getProducts(o);
