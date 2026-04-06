@@ -886,12 +886,10 @@ function RiderManagerView({ branch, onLogout }) {
 
   const todayOrders  = filterByPeriod(orders, "today", "");
   const unassigned   = todayOrders.filter(o => o.status === "Unassigned");
-  const updateQ      = updateSearch.trim().toLowerCase();
-  const updateBase   = updateQ ? orders : filterByPeriod(orders, mode, customDate, customDateEnd);
   const filtered     = filterByPeriod(orders, mode, customDate, customDateEnd);
-  const pending      = updateBase.filter(o => o.status === "Pending");
-  const delivered    = updateBase.filter(o => o.status === "Delivered");
-  const failed       = updateBase.filter(o => o.status === "Failed");
+  const pending      = filtered.filter(o => o.status === "Pending");
+  const delivered    = filtered.filter(o => o.status === "Delivered");
+  const failed       = filtered.filter(o => o.status === "Failed");
   const period       = getBonusPeriod();
 
   const TABS = [
@@ -1092,23 +1090,16 @@ function RiderManagerView({ branch, onLogout }) {
                   onChange={e => setPhoneSearch(e.target.value)}
                   style={{ marginBottom: "12px" }}
                 />
-                {(() => {
-                  const q = phoneSearch.trim().toLowerCase();
-                  const assignFiltered = q
-                    ? unassigned.filter(o => {
-                        const phone = String(o.phone || "").replace(/^'/, "").replace(/\s/g, "");
-                        const name  = (o.customerName || "").toLowerCase();
-                        return phone.includes(q) || name.includes(q);
-                      })
-                    : unassigned;
-                  if (assignFiltered.length === 0) return (
-                    <div style={{ background: "#fff", border: "1.5px solid var(--border)", borderRadius: "var(--r)", padding: "20px", textAlign: "center" }}>
-                      <p style={{ fontSize: "13px", color: "var(--text-faint)" }}>No orders match "<strong>{phoneSearch}</strong>"</p>
-                    </div>
-                  );
-                  return (
                 <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                {assignFiltered.map(o => {
+                {(phoneSearch.trim()
+                  ? unassigned.filter(o => {
+                      const q = phoneSearch.trim().toLowerCase();
+                      const phone = String(o.phone || "").replace(/^'/, "").replace(/\s/g, "");
+                      const name  = (o.customerName || "").toLowerCase();
+                      return phone.includes(q) || name.includes(q);
+                    })
+                  : unassigned
+                ).map(o => {
                   const prods = getProducts(o);
                   const total = prods.reduce((s, p) => s + (Number(p.price) || 0), 0);
                   return (
@@ -1170,8 +1161,6 @@ function RiderManagerView({ branch, onLogout }) {
                   );
                 })}
                 </div>
-                  );
-                })()}
               </>
             )}
           </div>
