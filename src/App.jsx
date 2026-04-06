@@ -121,6 +121,11 @@ const VENDORS = {
   "CHARZZY GROUP": ["Gotura","Latein capsule","Charzzy capsule"],
   "MIRA HEALTH": ["Hernia removal","Pure MORINGA TEA","Natural pain killer"],
   "PROMAX ENTERPRISE": ["Promax syrup","Promax oil","Mardes cap"],
+  "M&B": ["Repair scar cream"],
+  "Temi design": ["School bag","Water bottle"],
+  "Nail care pen": ["Nail care pen"],
+  "Mk oil": ["Mk oil"],
+  "Fortune": ["Ginger serum"],
 };
 const VENDOR_NAMES = Object.keys(VENDORS);
 
@@ -742,6 +747,10 @@ function RiderManagerView({ branch, onLogout }) {
 
   // ── Assign state ──
   const [assignRider, setAssignRider] = useState({}); // { orderId: riderName }
+  const [phoneSearch, setPhoneSearch] = useState("");
+  // ── Vendor search per product item ──
+  const [vendorSearch, setVendorSearch] = useState({}); // { itemIndex: searchText }
+  const [vendorOpen, setVendorOpen]   = useState({}); // { itemIndex: bool }
   // ── Edit delivered state ──
   const [editDeliveredId, setEditDeliveredId] = useState(null);
   const [editDeliveredForm, setEditDeliveredForm] = useState(null);
@@ -762,14 +771,24 @@ function RiderManagerView({ branch, onLogout }) {
       }).catch(() => {}).finally(() => setSyncing(false));
   }, [branch]);
 
-  function addProduct() { setForm(f => ({ ...f, products: [...f.products, { ...blankProduct }] })); }
-  function removeProduct(i) { setForm(f => ({ ...f, products: f.products.filter((_, idx) => idx !== i) })); }
+  function addProduct() {
+    setForm(f => ({ ...f, products: [...f.products, { ...blankProduct }] }));
+  }
+  function removeProduct(i) {
+    setForm(f => ({ ...f, products: f.products.filter((_, idx) => idx !== i) }));
+    setVendorSearch(s => { const n={...s}; delete n[i]; return n; });
+    setVendorOpen(s => { const n={...s}; delete n[i]; return n; });
+  }
   function setProduct(i, k, v) {
     setForm(f => ({ ...f, products: f.products.map((p, idx) => {
       if (idx !== i) return p;
       if (k === "vendor") return { ...p, vendor: v, name: "" };
       return { ...p, [k]: v };
     }) }));
+    if (k === "vendor") {
+      setVendorSearch(s => ({ ...s, [i]: v }));
+      setVendorOpen(s => ({ ...s, [i]: false }));
+    }
   }
 
   // ── Submit new order (no rider — goes to Unassigned) ──
@@ -941,10 +960,54 @@ function RiderManagerView({ branch, onLogout }) {
                   <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: "8px" }}>
                     <div>
                       <label className="k-label">Vendor</label>
-                      <select className="k-input" value={p.vendor || ""} onChange={e => setProduct(i, "vendor", e.target.value)}>
-                        <option value="">Select vendor...</option>
-                        {VENDOR_NAMES.map(v => <option key={v} value={v}>{v}</option>)}
-                      </select>
+                      <div style={{ position: "relative" }}>
+                        <input
+                          className="k-input"
+                          placeholder="Type to search vendor..."
+                          value={vendorSearch[i] !== undefined ? vendorSearch[i] : (p.vendor || "")}
+                          onFocus={() => setVendorOpen(s => ({ ...s, [i]: true }))}
+                          onChange={e => {
+                            setVendorSearch(s => ({ ...s, [i]: e.target.value }));
+                            setVendorOpen(s => ({ ...s, [i]: true }));
+                          }}
+                          autoComplete="off"
+                        />
+                        {vendorOpen[i] && (
+                          <div style={{
+                            position: "absolute", top: "100%", left: 0, right: 0, zIndex: 100,
+                            background: "#fff", border: "1.5px solid var(--border2)",
+                            borderRadius: "var(--r-sm)", boxShadow: "var(--shadow-md)",
+                            maxHeight: "200px", overflowY: "auto", marginTop: "2px"
+                          }}>
+                            {VENDOR_NAMES.filter(v => {
+                              const q = (vendorSearch[i] || "").toLowerCase();
+                              return !q || v.toLowerCase().includes(q);
+                            }).length === 0 && (
+                              <p style={{ padding: "10px 14px", fontSize: "12px", color: "var(--text-faint)" }}>No vendors found</p>
+                            )}
+                            {VENDOR_NAMES.filter(v => {
+                              const q = (vendorSearch[i] || "").toLowerCase();
+                              return !q || v.toLowerCase().includes(q);
+                            }).map(v => (
+                              <div key={v}
+                                onMouseDown={e => { e.preventDefault(); setProduct(i, "vendor", v); }}
+                                style={{
+                                  padding: "10px 14px", fontSize: "13px", fontWeight: 500,
+                                  cursor: "pointer", color: "var(--text)",
+                                  background: p.vendor === v ? "var(--blue-pale)" : "transparent",
+                                  borderBottom: "1px solid var(--border)",
+                                }}>
+                                {v}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      {/* Tap outside to close */}
+                      {vendorOpen[i] && (
+                        <div style={{ position: "fixed", inset: 0, zIndex: 99 }}
+                          onClick={() => setVendorOpen(s => ({ ...s, [i]: false }))} />
+                      )}
                     </div>
                     <div>
                       <label className="k-label">Product</label>
@@ -1018,8 +1081,21 @@ function RiderManagerView({ branch, onLogout }) {
                 <p style={{ fontSize: "12px", color: "var(--text-faint)", marginTop: "4px" }}>No unassigned orders for today</p>
               </div>
             ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                {unassigned.map(o => {
+              <>
+                <input
+                  className="k-input"
+                  placeholder="🔍 Search by phone number..."
+                  type="tel"
+                  inputMode="numeric"
+                  value={phoneSearch}
+                  onChange={e => setPhoneSearch(e.target.value)}
+                  style={{ marginBottom: "12px" }}
+                />
+                <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                {(phoneSearch.trim()
+                  ? unassigned.filter(o => (o.phone || "").includes(phoneSearch.trim()))
+                  : unassigned
+                ).map(o => {
                   const prods = getProducts(o);
                   const total = prods.reduce((s, p) => s + (Number(p.price) || 0), 0);
                   return (
@@ -1080,7 +1156,8 @@ function RiderManagerView({ branch, onLogout }) {
                     </div>
                   );
                 })}
-              </div>
+                </div>
+              </>
             )}
           </div>
         )}
