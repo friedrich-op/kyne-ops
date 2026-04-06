@@ -1105,7 +1105,8 @@ function RiderManagerView({ branch, onLogout }) {
                       const q = phoneSearch.trim().toLowerCase();
                       const phone = String(o.phone || "").replace(/^'/, "").replace(/\s/g, "");
                       const name  = (o.customerName || "").toLowerCase();
-                      return phone.includes(q) || name.includes(q);
+                      const addr  = (o.address || "").toLowerCase();
+                      return phone.includes(q) || name.includes(q) || addr.includes(q);
                     })
                   : unassigned
                 ).map(o => {
@@ -1369,7 +1370,8 @@ function RiderManagerView({ branch, onLogout }) {
               const filteredPending = q
                 ? pending.filter(o => {
                     const phone = String(o.phone || "").replace(/^'/, "").replace(/\s/g, "");
-                    return phone.includes(q) || (o.customerName || "").toLowerCase().includes(q);
+                    const addr  = (o.address || "").toLowerCase();
+                    return phone.includes(q) || (o.customerName || "").toLowerCase().includes(q) || addr.includes(q);
                   })
                 : pending;
               if (filteredPending.length === 0) return null;
@@ -1434,7 +1436,8 @@ function RiderManagerView({ branch, onLogout }) {
               const filteredDelivered = q
                 ? delivered.filter(o => {
                     const phone = String(o.phone || "").replace(/^'/, "").replace(/\s/g, "");
-                    return phone.includes(q) || (o.customerName || "").toLowerCase().includes(q);
+                    const addr  = (o.address || "").toLowerCase();
+                    return phone.includes(q) || (o.customerName || "").toLowerCase().includes(q) || addr.includes(q);
                   })
                 : delivered;
               if (filteredDelivered.length === 0) return null;
