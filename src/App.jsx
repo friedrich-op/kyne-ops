@@ -960,7 +960,7 @@ function RiderManagerView({ branch, onLogout }) {
   return (
     <div style={{ minHeight: "100vh", background: "var(--bg)" }}>
       <style>{GS}</style>
-      <TopNav subtitle={`${branch} · Rider Manager`} tabs={TABS} activeTab={tab} setActiveTab={t => { setTab(t); setVendorOpen({}); setVendorSearch({}); }} onLogout={onLogout} syncing={syncing} />
+      <TopNav subtitle={`${branch} · Rider Manager`} tabs={TABS} activeTab={tab} setActiveTab={t => { setTab(t); }} onLogout={onLogout} syncing={syncing} />
       <div style={{ maxWidth: "720px", margin: "0 auto", padding: "16px 12px" }}>
 
         {/* ── LOG ORDERS TAB ── */}
