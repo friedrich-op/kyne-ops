@@ -181,7 +181,7 @@ function parseSheetRows(data) {
       remittedAmount: Number(row.remittedAmount)  || 0,
       price:          Number(row.price)          || 0,
       totalPrice:     Number(row.totalPrice)      || 0,
-      phone:          row.phone                   || "",
+      phone:          String(row.phone || "").replace(/^'/, ""),
       riderRemitted:  row.riderRemitted === "true" || row.riderRemitted === true,
       edited:         row.edited === "true" || row.edited === true,
       // RiderPayments fields — recalculate outstanding/cleared from actual numbers
@@ -748,6 +748,7 @@ function RiderManagerView({ branch, onLogout }) {
   // ── Assign state ──
   const [assignRider, setAssignRider] = useState({}); // { orderId: riderName }
   const [phoneSearch, setPhoneSearch] = useState("");
+  const [updateSearch, setUpdateSearch] = useState("");
   // ── Vendor search per product item ──
   const [vendorSearch, setVendorSearch] = useState({}); // { itemIndex: searchText }
   const [vendorOpen, setVendorOpen]   = useState({}); // { itemIndex: bool }
@@ -1084,16 +1085,19 @@ function RiderManagerView({ branch, onLogout }) {
               <>
                 <input
                   className="k-input"
-                  placeholder="🔍 Search by phone number..."
-                  type="tel"
-                  inputMode="numeric"
+                  placeholder="🔍 Search by phone number or name..."
                   value={phoneSearch}
                   onChange={e => setPhoneSearch(e.target.value)}
                   style={{ marginBottom: "12px" }}
                 />
                 <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                 {(phoneSearch.trim()
-                  ? unassigned.filter(o => (o.phone || "").includes(phoneSearch.trim()))
+                  ? unassigned.filter(o => {
+                      const q = phoneSearch.trim().toLowerCase();
+                      const phone = String(o.phone || "").replace(/^'/, "").replace(/\s/g, "");
+                      const name  = (o.customerName || "").toLowerCase();
+                      return phone.includes(q) || name.includes(q);
+                    })
                   : unassigned
                 ).map(o => {
                   const prods = getProducts(o);
@@ -1341,12 +1345,29 @@ function RiderManagerView({ branch, onLogout }) {
               </div>
             )}
 
+            {/* Search bar */}
+            <input
+              className="k-input"
+              placeholder="🔍 Search by phone or name..."
+              value={updateSearch}
+              onChange={e => setUpdateSearch(e.target.value)}
+              style={{ marginBottom: "12px" }}
+            />
+
             {/* Pending orders */}
-            {pending.length > 0 && (
+            {(() => {
+              const q = updateSearch.trim().toLowerCase();
+              const filteredPending = q
+                ? pending.filter(o => {
+                    const phone = String(o.phone || "").replace(/^'/, "").replace(/\s/g, "");
+                    return phone.includes(q) || (o.customerName || "").toLowerCase().includes(q);
+                  })
+                : pending;
+              return filteredPending.length > 0 && (
               <>
-                <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--amber)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: "8px" }}>⏳ Pending ({pending.length})</p>
+                <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--amber)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: "8px" }}>⏳ Pending ({filteredPending.length}{q && filteredPending.length !== pending.length ? ` of ${pending.length}` : ""})</p>
                 <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: "20px" }}>
-                  {pending.map(o => (
+                  {filteredPending.map(o => (
                     <div key={o.id} style={{ background: "#fff", border: "1.5px solid var(--border)", borderRadius: "var(--r)", padding: "12px 14px", boxShadow: "var(--shadow)" }}>
                       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "8px" }}>
                         <div>
@@ -1377,14 +1398,22 @@ function RiderManagerView({ branch, onLogout }) {
                   ))}
                 </div>
               </>
-            )}
+            );})()}
 
             {/* Delivered orders */}
-            {delivered.length > 0 && (
+            {(() => {
+              const q = updateSearch.trim().toLowerCase();
+              const filteredDelivered = q
+                ? delivered.filter(o => {
+                    const phone = String(o.phone || "").replace(/^'/, "").replace(/\s/g, "");
+                    return phone.includes(q) || (o.customerName || "").toLowerCase().includes(q);
+                  })
+                : delivered;
+              return filteredDelivered.length > 0 && (
               <>
-                <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--green)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: "8px" }}>✓ Delivered ({delivered.length})</p>
+                <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--green)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: "8px" }}>✓ Delivered ({filteredDelivered.length}{updateSearch.trim() && filteredDelivered.length !== delivered.length ? ` of ${delivered.length}` : ""})</p>
                 <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: "20px" }}>
-                  {delivered.map(o => (
+                  {filteredDelivered.map(o => (
                     <div key={o.id} style={{ background: o.edited?"#fff":"#ecfdf5", border: `1.5px solid ${o.edited?"var(--border)":"#a7f3d0"}`, borderRadius: "var(--r)", padding: "12px 14px" }}>
                       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom:"8px" }}>
                         <div style={{ flex:1 }}>
@@ -1420,14 +1449,22 @@ function RiderManagerView({ branch, onLogout }) {
                   ))}
                 </div>
               </>
-            )}
+            );})()}
 
             {/* Failed orders */}
-            {failed.length > 0 && (
+            {(() => {
+              const q = updateSearch.trim().toLowerCase();
+              const filteredFailed = q
+                ? failed.filter(o => {
+                    const phone = String(o.phone || "").replace(/^'/, "").replace(/\s/g, "");
+                    return phone.includes(q) || (o.customerName || "").toLowerCase().includes(q);
+                  })
+                : failed;
+              return filteredFailed.length > 0 && (
               <>
-                <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-faint)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: "8px" }}>✕ Failed ({failed.length})</p>
+                <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-faint)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: "8px" }}>✕ Failed ({filteredFailed.length}{q && filteredFailed.length !== failed.length ? ` of ${failed.length}` : ""})</p>
                 <div style={{ display: "flex", flexDirection: "column", gap: "8px", opacity: .5 }}>
-                  {failed.map(o => (
+                  {filteredFailed.map(o => (
                     <div key={o.id} style={{ background: "#fff", border: "1.5px solid var(--border)", borderRadius: "var(--r)", padding: "10px 14px" }}>
                       <p style={{ fontSize: "12px", fontWeight: 500, color: "var(--text-dim)" }}>{o.customerName} · {o.rider}</p>
                       <p style={{ fontSize: "11px", color: "var(--text-faint)", marginTop: "2px" }}>{getProducts(o).map(p => p.name).join(", ")}</p>
@@ -1435,7 +1472,7 @@ function RiderManagerView({ branch, onLogout }) {
                   ))}
                 </div>
               </>
-            )}
+            );})()}
 
             {pending.length === 0 && delivered.length === 0 && failed.length === 0 && (
               <p style={{ textAlign: "center", padding: "48px 0", fontSize: "13px", color: "var(--text-faint)" }}>No orders in this period</p>
