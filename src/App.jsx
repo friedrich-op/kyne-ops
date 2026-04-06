@@ -10,7 +10,7 @@ const RIDERS = {
     "Damilola", "Oyindamola", "Philip", "Solomon", "Teemah",
     "Bright", "Jeremiah", "Joseph", "Tommy", "Mr Tobi", "Mr Ade",
     "Segun", "Mr Kingsley", "Mr Ajayi", "Mr John", "Great God",
-    "Mr Sunday", "Mr Kenny", "Olawunmi", "Mr Wilson", "Mr Idris", "Azeez",
+    "Mr Sunday", "Mr Kenny", "Olawunmi", "Mr Wilson", "Mr Idris", "Azeez", "Godswill",
   ],
   KETU: ["Semilore", "Miracle", "Yusuf", "Dickson", "Tony", "Habeb", "Lawal", "Ayomide"],
 };
@@ -70,7 +70,7 @@ function getBonusRate(n, riderName) {
 
 const VENDORS = {
   "LADEX": ["Jandes","Boshjex","Boshjex pro","Xebenco powder","Propazi"],
-  "TOPMO": ["Elipy cap","Elipy balm","Sabbana","HYPERTOP","Vertidem","Topmo cleanser tea","Topmo capsule","Senior cap","Topmo detox","Prosma","Venaba","Tabizo","Charzzy","Elano","Vaniso","Cendez","Sb latein","Suyem","Zavina","Yemit","Latein capsule"],
+  "TOPMO": ["Elipy cap","Elipy balm","Sabbana","HYPERTOP","Vertidem","Topmo cleanser tea","Topmo capsule","Senior cap","Topmo detox","Prosma","Venaba","Tabizo","Charzzy","Elano","Vaniso","Cendez","Sb latein","Suyem","Zavina","Yemit"],
   "LASUMAX GROUP": ["Padosa","TUNFALZ","Kidema oil","Kidema capsule","Lavosa","Lasumax tea","Lasumax cap","Provena capsule","Provena cleanser","Kenzai","Yenita"],
   "MUMART": ["Eye gel","Guava boost","PSORIASIS Cream","5 in 1 facial","Lizard spray","Collagen oil","Foot peeling cream","Stamina pro","Collagen face mask","Retinol antioxidants"],
   "EDZU": ["Davigormax","Davigormax powder","Venature","Yilest","QISE Anti wrinkle","A pack","Shilajit capsule","Retinol lotion","Fyto infection flusher"],
@@ -634,6 +634,67 @@ function BonusRow({ name, count, period }) {
   );
 }
 
+// ─── VENDOR COMBO (isolated state so it never crashes parent) ────────────────
+function VendorCombo({ value, onChange }) {
+  const [search, setSearch] = useState(value || "");
+  const [open, setOpen]     = useState(false);
+
+  // Sync if parent resets value (e.g. form clear)
+  useEffect(() => { setSearch(value || ""); }, [value]);
+
+  const filtered = VENDOR_NAMES.filter(v => {
+    const q = search.toLowerCase();
+    return !q || v.toLowerCase().includes(q);
+  });
+
+  function select(v) {
+    setSearch(v);
+    setOpen(false);
+    onChange(v);
+  }
+
+  return (
+    <div style={{ position: "relative" }}>
+      <input
+        className="k-input"
+        placeholder="Type to search vendor..."
+        value={search}
+        autoComplete="off"
+        onFocus={() => setOpen(true)}
+        onChange={e => { setSearch(e.target.value); setOpen(true); onChange(""); }}
+      />
+      {open && (
+        <>
+          <div style={{
+            position: "absolute", top: "100%", left: 0, right: 0, zIndex: 200,
+            background: "#fff", border: "1.5px solid var(--border2)",
+            borderRadius: "var(--r-sm)", boxShadow: "var(--shadow-md)",
+            maxHeight: "200px", overflowY: "auto", marginTop: "2px"
+          }}>
+            {filtered.length === 0
+              ? <p style={{ padding: "10px 14px", fontSize: "12px", color: "var(--text-faint)" }}>No vendors found</p>
+              : filtered.map(v => (
+                <div key={v}
+                  onMouseDown={e => { e.preventDefault(); select(v); }}
+                  style={{
+                    padding: "10px 14px", fontSize: "13px", fontWeight: 500,
+                    cursor: "pointer", color: "var(--text)",
+                    background: value === v ? "var(--blue-pale)" : "transparent",
+                    borderBottom: "1px solid var(--border)",
+                  }}>
+                  {v}
+                </div>
+              ))
+            }
+          </div>
+          <div style={{ position: "fixed", inset: 0, zIndex: 199 }}
+            onClick={() => setOpen(false)} />
+        </>
+      )}
+    </div>
+  );
+}
+
 // ─── LOGIN ────────────────────────────────────────────────────────────────────
 function LoginScreen({ onLogin }) {
   const [username, setUsername] = useState("");
@@ -749,9 +810,6 @@ function RiderManagerView({ branch, onLogout }) {
   const [assignRider, setAssignRider] = useState({}); // { orderId: riderName }
   const [phoneSearch, setPhoneSearch] = useState("");
   const [updateSearch, setUpdateSearch] = useState("");
-  // ── Vendor search per product item ──
-  const [vendorSearch, setVendorSearch] = useState({}); // { itemIndex: searchText }
-  const [vendorOpen, setVendorOpen]   = useState({}); // { itemIndex: bool }
   // ── Edit delivered state ──
   const [editDeliveredId, setEditDeliveredId] = useState(null);
   const [editDeliveredForm, setEditDeliveredForm] = useState(null);
@@ -777,8 +835,6 @@ function RiderManagerView({ branch, onLogout }) {
   }
   function removeProduct(i) {
     setForm(f => ({ ...f, products: f.products.filter((_, idx) => idx !== i) }));
-    setVendorSearch(s => { const n={...s}; delete n[i]; return n; });
-    setVendorOpen(s => { const n={...s}; delete n[i]; return n; });
   }
   function setProduct(i, k, v) {
     setForm(f => ({ ...f, products: f.products.map((p, idx) => {
@@ -786,10 +842,6 @@ function RiderManagerView({ branch, onLogout }) {
       if (k === "vendor") return { ...p, vendor: v, name: "" };
       return { ...p, [k]: v };
     }) }));
-    if (k === "vendor") {
-      setVendorSearch(s => ({ ...s, [i]: v }));
-      setVendorOpen(s => ({ ...s, [i]: false }));
-    }
   }
 
   // ── Submit new order (no rider — goes to Unassigned) ──
@@ -908,7 +960,7 @@ function RiderManagerView({ branch, onLogout }) {
   return (
     <div style={{ minHeight: "100vh", background: "var(--bg)" }}>
       <style>{GS}</style>
-      <TopNav subtitle={`${branch} · Rider Manager`} tabs={TABS} activeTab={tab} setActiveTab={setTab} onLogout={onLogout} syncing={syncing} />
+      <TopNav subtitle={`${branch} · Rider Manager`} tabs={TABS} activeTab={tab} setActiveTab={t => { setTab(t); setVendorOpen({}); setVendorSearch({}); }} onLogout={onLogout} syncing={syncing} />
       <div style={{ maxWidth: "720px", margin: "0 auto", padding: "16px 12px" }}>
 
         {/* ── LOG ORDERS TAB ── */}
@@ -961,54 +1013,10 @@ function RiderManagerView({ branch, onLogout }) {
                   <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: "8px" }}>
                     <div>
                       <label className="k-label">Vendor</label>
-                      <div style={{ position: "relative" }}>
-                        <input
-                          className="k-input"
-                          placeholder="Type to search vendor..."
-                          value={vendorSearch[i] !== undefined ? vendorSearch[i] : (p.vendor || "")}
-                          onFocus={() => setVendorOpen(s => ({ ...s, [i]: true }))}
-                          onChange={e => {
-                            setVendorSearch(s => ({ ...s, [i]: e.target.value }));
-                            setVendorOpen(s => ({ ...s, [i]: true }));
-                          }}
-                          autoComplete="off"
-                        />
-                        {vendorOpen[i] && (
-                          <div style={{
-                            position: "absolute", top: "100%", left: 0, right: 0, zIndex: 100,
-                            background: "#fff", border: "1.5px solid var(--border2)",
-                            borderRadius: "var(--r-sm)", boxShadow: "var(--shadow-md)",
-                            maxHeight: "200px", overflowY: "auto", marginTop: "2px"
-                          }}>
-                            {VENDOR_NAMES.filter(v => {
-                              const q = (vendorSearch[i] || "").toLowerCase();
-                              return !q || v.toLowerCase().includes(q);
-                            }).length === 0 && (
-                              <p style={{ padding: "10px 14px", fontSize: "12px", color: "var(--text-faint)" }}>No vendors found</p>
-                            )}
-                            {VENDOR_NAMES.filter(v => {
-                              const q = (vendorSearch[i] || "").toLowerCase();
-                              return !q || v.toLowerCase().includes(q);
-                            }).map(v => (
-                              <div key={v}
-                                onMouseDown={e => { e.preventDefault(); setProduct(i, "vendor", v); }}
-                                style={{
-                                  padding: "10px 14px", fontSize: "13px", fontWeight: 500,
-                                  cursor: "pointer", color: "var(--text)",
-                                  background: p.vendor === v ? "var(--blue-pale)" : "transparent",
-                                  borderBottom: "1px solid var(--border)",
-                                }}>
-                                {v}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                      {/* Tap outside to close */}
-                      {vendorOpen[i] && (
-                        <div style={{ position: "fixed", inset: 0, zIndex: 99 }}
-                          onClick={() => setVendorOpen(s => ({ ...s, [i]: false }))} />
-                      )}
+                      <VendorCombo
+                        value={p.vendor || ""}
+                        onChange={v => setProduct(i, "vendor", v)}
+                      />
                     </div>
                     <div>
                       <label className="k-label">Product</label>
@@ -1089,6 +1097,7 @@ function RiderManagerView({ branch, onLogout }) {
                   value={phoneSearch}
                   onChange={e => setPhoneSearch(e.target.value)}
                   style={{ marginBottom: "12px" }}
+                  autoComplete="off"
                 />
                 <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                 {(phoneSearch.trim()
@@ -1354,7 +1363,7 @@ function RiderManagerView({ branch, onLogout }) {
               style={{ marginBottom: "12px" }}
             />
 
-            {/* Pending orders */}
+            {/* Pending orders — grouped by rider */}
             {(() => {
               const q = updateSearch.trim().toLowerCase();
               const filteredPending = q
@@ -1363,44 +1372,63 @@ function RiderManagerView({ branch, onLogout }) {
                     return phone.includes(q) || (o.customerName || "").toLowerCase().includes(q);
                   })
                 : pending;
-              return filteredPending.length > 0 && (
-              <>
-                <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--amber)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: "8px" }}>⏳ Pending ({filteredPending.length}{q && filteredPending.length !== pending.length ? ` of ${pending.length}` : ""})</p>
-                <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: "20px" }}>
-                  {filteredPending.map(o => (
-                    <div key={o.id} style={{ background: "#fff", border: "1.5px solid var(--border)", borderRadius: "var(--r)", padding: "12px 14px", boxShadow: "var(--shadow)" }}>
-                      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "8px" }}>
-                        <div>
-                          <div>
-                          <p style={{ fontSize: "14px", fontWeight: 700 }}>{o.customerName}</p>
-                          {o.phone && <a href={`tel:${o.phone}`} style={{ fontSize: "13px", color: "var(--blue)", marginTop: "3px", display: "block", fontWeight: 600, textDecoration: "none" }}>📞 {o.phone}</a>}
-                          <p style={{ fontSize: "11px", color: "var(--text-faint)", marginTop: "3px" }}>📍 {o.address}</p>
-                          <p style={{ fontSize: "11px", color: "var(--text-faint)", marginTop: "2px" }}>🛵 {o.rider} · {o.date}</p>
-                          <div style={{ marginTop: "8px", display:"flex", flexDirection:"column", gap:"4px" }}>
-                            {getProducts(o).map((p, i) => (
-                              <div key={i} style={{ background:"var(--surface2)", border:"1px solid var(--border)", borderRadius:"var(--r-sm)", padding:"6px 10px", display:"flex", justifyContent:"space-between" }}>
-                                <span style={{ fontSize: "12px", fontWeight:600, color:"var(--text)" }}>{p.name} ×{p.qty}</span>
-                                <span style={{ fontSize:"12px", fontWeight:700, color:"var(--blue)" }}>{fmt(p.price)}</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                        </div>
-                        <span style={{ fontFamily: "var(--display)", fontSize: "16px", fontWeight: 800, color: "var(--blue)", marginLeft: "12px", flexShrink: 0, alignSelf:"flex-start" }}>
-                          {fmt(getProducts(o).reduce((s, p) => s + (Number(p.price) || 0), 0))}
-                        </span>
+              if (filteredPending.length === 0) return null;
+              // Group by rider
+              const riderGroups = {};
+              filteredPending.forEach(o => {
+                const r = o.rider || "Unassigned";
+                if (!riderGroups[r]) riderGroups[r] = [];
+                riderGroups[r].push(o);
+              });
+              return (
+                <>
+                  <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--amber)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: "12px" }}>
+                    ⏳ Pending ({filteredPending.length}{q && filteredPending.length !== pending.length ? ` of ${pending.length}` : ""})
+                  </p>
+                  {Object.entries(riderGroups).map(([rider, rOrders]) => (
+                    <div key={rider} style={{ marginBottom: "20px" }}>
+                      {/* Rider header */}
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px", padding: "8px 12px", background: "var(--navy)", borderRadius: "var(--r-sm)" }}>
+                        <RiderAvatar name={rider} size={26} />
+                        <span style={{ fontFamily: "var(--display)", fontSize: "13px", fontWeight: 700, color: "#fff" }}>{rider}</span>
+                        <span style={{ fontSize: "11px", color: "rgba(255,255,255,.45)", marginLeft: "auto" }}>{rOrders.length} order{rOrders.length !== 1 ? "s" : ""}</span>
                       </div>
-                      <div style={{ display: "flex", gap: "8px", paddingTop: "12px", borderTop: "1px solid var(--border)" }}>
-                        <button onClick={() => markDelivered(o.id)} style={{ flex: 1, padding: "13px", background: "var(--green)", border: "none", borderRadius: "var(--r-sm)", color: "#fff", fontSize: "13px", fontWeight: 700, cursor: "pointer" }}>✓ Delivered</button>
-                        <button onClick={() => markFailed(o.id)} style={{ flex: 1, padding: "13px", background: "#fef2f2", border: "1.5px solid #fecaca", borderRadius: "var(--r-sm)", color: "var(--red)", fontSize: "13px", fontWeight: 700, cursor: "pointer" }}>✕ Failed</button>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                        {rOrders.map(o => (
+                          <div key={o.id} style={{ background: "#fff", border: "1.5px solid var(--border)", borderRadius: "var(--r)", padding: "12px 14px", boxShadow: "var(--shadow)" }}>
+                            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "8px" }}>
+                              <div style={{ flex: 1 }}>
+                                <p style={{ fontSize: "14px", fontWeight: 700 }}>{o.customerName}</p>
+                                {o.phone && <a href={`tel:${o.phone}`} style={{ fontSize: "13px", color: "var(--blue)", marginTop: "3px", display: "block", fontWeight: 600, textDecoration: "none" }}>📞 {o.phone}</a>}
+                                <p style={{ fontSize: "11px", color: "var(--text-faint)", marginTop: "3px" }}>📍 {o.address}</p>
+                                <p style={{ fontSize: "11px", color: "var(--text-faint)", marginTop: "2px" }}>📅 {o.date}</p>
+                                <div style={{ marginTop: "8px", display: "flex", flexDirection: "column", gap: "4px" }}>
+                                  {getProducts(o).map((p, i) => (
+                                    <div key={i} style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--r-sm)", padding: "6px 10px", display: "flex", justifyContent: "space-between" }}>
+                                      <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--text)" }}>{p.name} ×{p.qty}</span>
+                                      <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--blue)" }}>{fmt(p.price)}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                              <span style={{ fontFamily: "var(--display)", fontSize: "16px", fontWeight: 800, color: "var(--blue)", marginLeft: "12px", flexShrink: 0, alignSelf: "flex-start" }}>
+                                {fmt(getProducts(o).reduce((s, p) => s + (Number(p.price) || 0), 0))}
+                              </span>
+                            </div>
+                            <div style={{ display: "flex", gap: "8px", paddingTop: "12px", borderTop: "1px solid var(--border)" }}>
+                              <button onClick={() => markDelivered(o.id)} style={{ flex: 1, padding: "13px", background: "var(--green)", border: "none", borderRadius: "var(--r-sm)", color: "#fff", fontSize: "13px", fontWeight: 700, cursor: "pointer" }}>✓ Delivered</button>
+                              <button onClick={() => markFailed(o.id)} style={{ flex: 1, padding: "13px", background: "#fef2f2", border: "1.5px solid #fecaca", borderRadius: "var(--r-sm)", color: "var(--red)", fontSize: "13px", fontWeight: 700, cursor: "pointer" }}>✕ Failed</button>
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     </div>
                   ))}
-                </div>
-              </>
-            );})()}
+                </>
+              );
+            })()}
 
-            {/* Delivered orders */}
+            {/* Delivered orders — grouped by rider, always editable */}
             {(() => {
               const q = updateSearch.trim().toLowerCase();
               const filteredDelivered = q
@@ -1409,47 +1437,63 @@ function RiderManagerView({ branch, onLogout }) {
                     return phone.includes(q) || (o.customerName || "").toLowerCase().includes(q);
                   })
                 : delivered;
-              return filteredDelivered.length > 0 && (
-              <>
-                <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--green)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: "8px" }}>✓ Delivered ({filteredDelivered.length}{updateSearch.trim() && filteredDelivered.length !== delivered.length ? ` of ${delivered.length}` : ""})</p>
-                <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: "20px" }}>
-                  {filteredDelivered.map(o => (
-                    <div key={o.id} style={{ background: o.edited?"#fff":"#ecfdf5", border: `1.5px solid ${o.edited?"var(--border)":"#a7f3d0"}`, borderRadius: "var(--r)", padding: "12px 14px" }}>
-                      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom:"8px" }}>
-                        <div style={{ flex:1 }}>
-                          <p style={{ fontSize: "13px", fontWeight: 700 }}>{o.customerName}</p>
-                          {o.phone && <a href={`tel:${o.phone}`} style={{ fontSize:"12px", color:"var(--blue)", marginTop:"2px", display:"block", fontWeight:600, textDecoration:"none" }}>📞 {o.phone}</a>}
-                          <p style={{ fontSize: "11px", color: "var(--text-faint)", marginTop: "2px" }}>🛵 {o.rider} · {o.date}</p>
-                          <div style={{ marginTop: "6px", display:"flex", flexDirection:"column", gap:"3px" }}>
-                            {getProducts(o).map((p, i) => (
-                              <div key={i} style={{ display:"flex", justifyContent:"space-between", padding:"5px 8px", background:"rgba(5,150,105,.06)", borderRadius:"var(--r-sm)" }}>
-                                <span style={{ fontSize:"12px", fontWeight:600 }}>{p.name} ×{p.qty}</span>
-                                <span style={{ fontSize:"12px", fontWeight:700, color:"var(--green)" }}>{fmt(p.price)}</span>
+              if (filteredDelivered.length === 0) return null;
+              const riderGroups = {};
+              filteredDelivered.forEach(o => {
+                const r = o.rider || "Unassigned";
+                if (!riderGroups[r]) riderGroups[r] = [];
+                riderGroups[r].push(o);
+              });
+              return (
+                <>
+                  <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--green)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: "12px" }}>
+                    ✓ Delivered ({filteredDelivered.length}{q && filteredDelivered.length !== delivered.length ? ` of ${delivered.length}` : ""})
+                  </p>
+                  {Object.entries(riderGroups).map(([rider, rOrders]) => (
+                    <div key={rider} style={{ marginBottom: "20px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px", padding: "8px 12px", background: "var(--green)", borderRadius: "var(--r-sm)" }}>
+                        <RiderAvatar name={rider} size={26} />
+                        <span style={{ fontFamily: "var(--display)", fontSize: "13px", fontWeight: 700, color: "#fff" }}>{rider}</span>
+                        <span style={{ fontSize: "11px", color: "rgba(255,255,255,.55)", marginLeft: "auto" }}>{rOrders.length} delivered</span>
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: "8px" }}>
+                        {rOrders.map(o => (
+                          <div key={o.id} style={{ background: "#ecfdf5", border: "1.5px solid #a7f3d0", borderRadius: "var(--r)", padding: "12px 14px" }}>
+                            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
+                              <div style={{ flex: 1 }}>
+                                <p style={{ fontSize: "13px", fontWeight: 700 }}>{o.customerName}</p>
+                                {o.phone && <a href={`tel:${o.phone}`} style={{ fontSize: "12px", color: "var(--blue)", marginTop: "2px", display: "block", fontWeight: 600, textDecoration: "none" }}>📞 {o.phone}</a>}
+                                <p style={{ fontSize: "11px", color: "var(--text-faint)", marginTop: "2px" }}>📅 {o.date}</p>
+                                <div style={{ marginTop: "6px", display: "flex", flexDirection: "column", gap: "3px" }}>
+                                  {getProducts(o).map((p, i) => (
+                                    <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "5px 8px", background: "rgba(5,150,105,.06)", borderRadius: "var(--r-sm)" }}>
+                                      <span style={{ fontSize: "12px", fontWeight: 600 }}>{p.name} ×{p.qty}</span>
+                                      <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--green)" }}>{fmt(p.price)}</span>
+                                    </div>
+                                  ))}
+                                </div>
                               </div>
-                            ))}
+                              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "6px", marginLeft: "12px", flexShrink: 0 }}>
+                                <span style={{ fontFamily: "var(--display)", fontSize: "15px", fontWeight: 800, color: "var(--green)" }}>
+                                  {fmt(getProducts(o).reduce((s, p) => s + (Number(p.price) || 0), 0))}
+                                </span>
+                                <button onClick={() => {
+                                  const prods = getProducts(o);
+                                  setEditDeliveredId(o.id);
+                                  setEditDeliveredForm({ products: prods.map(p => ({ ...p })) });
+                                }} style={{ padding: "5px 10px", background: "#fffbeb", border: "1.5px solid #fde68a", borderRadius: "var(--r-sm)", color: "var(--amber)", fontSize: "11px", fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
+                                  ✏ Edit
+                                </button>
+                              </div>
+                            </div>
                           </div>
-                        </div>
-                        <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:"6px", marginLeft:"12px", flexShrink:0 }}>
-                          <span style={{ fontFamily: "var(--display)", fontSize: "15px", fontWeight: 800, color: "var(--green)" }}>
-                            {fmt(getProducts(o).reduce((s, p) => s + (Number(p.price) || 0), 0))}
-                          </span>
-                          {!o.edited && (
-                            <button onClick={() => {
-                              const prods = getProducts(o);
-                              setEditDeliveredId(o.id);
-                              setEditDeliveredForm({ products: prods.map(p=>({...p})) });
-                            }} style={{ padding:"5px 10px", background:"#fffbeb", border:"1.5px solid #fde68a", borderRadius:"var(--r-sm)", color:"var(--amber)", fontSize:"11px", fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>
-                              ✏ Edit
-                            </button>
-                          )}
-                          {o.edited && <span style={{ fontSize:"10px", color:"var(--text-faint)", fontWeight:600 }}>Edited ✓</span>}
-                        </div>
+                        ))}
                       </div>
                     </div>
                   ))}
-                </div>
-              </>
-            );})()}
+                </>
+              );
+            })()}
 
             {/* Failed orders */}
             {(() => {
@@ -1461,18 +1505,19 @@ function RiderManagerView({ branch, onLogout }) {
                   })
                 : failed;
               return filteredFailed.length > 0 && (
-              <>
-                <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-faint)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: "8px" }}>✕ Failed ({filteredFailed.length}{q && filteredFailed.length !== failed.length ? ` of ${failed.length}` : ""})</p>
-                <div style={{ display: "flex", flexDirection: "column", gap: "8px", opacity: .5 }}>
-                  {filteredFailed.map(o => (
-                    <div key={o.id} style={{ background: "#fff", border: "1.5px solid var(--border)", borderRadius: "var(--r)", padding: "10px 14px" }}>
-                      <p style={{ fontSize: "12px", fontWeight: 500, color: "var(--text-dim)" }}>{o.customerName} · {o.rider}</p>
-                      <p style={{ fontSize: "11px", color: "var(--text-faint)", marginTop: "2px" }}>{getProducts(o).map(p => p.name).join(", ")}</p>
-                    </div>
-                  ))}
-                </div>
-              </>
-            );})()}
+                <>
+                  <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-faint)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: "8px" }}>✕ Failed ({filteredFailed.length}{q && filteredFailed.length !== failed.length ? ` of ${failed.length}` : ""})</p>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "8px", opacity: .5 }}>
+                    {filteredFailed.map(o => (
+                      <div key={o.id} style={{ background: "#fff", border: "1.5px solid var(--border)", borderRadius: "var(--r)", padding: "10px 14px" }}>
+                        <p style={{ fontSize: "12px", fontWeight: 500, color: "var(--text-dim)" }}>{o.customerName} · {o.rider}</p>
+                        <p style={{ fontSize: "11px", color: "var(--text-faint)", marginTop: "2px" }}>{getProducts(o).map(p => p.name).join(", ")}</p>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              );
+            })()}
 
             {pending.length === 0 && delivered.length === 0 && failed.length === 0 && (
               <p style={{ textAlign: "center", padding: "48px 0", fontSize: "13px", color: "var(--text-faint)" }}>No orders in this period</p>
