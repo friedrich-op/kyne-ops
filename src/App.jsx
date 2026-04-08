@@ -10,7 +10,7 @@ const RIDERS = {
     "Damilola", "Oyindamola", "Philip", "Solomon", "Teemah",
     "Bright", "Jeremiah", "Joseph", "Tommy", "Mr Tobi", "Mr Ade",
     "Segun", "Mr Kingsley", "Mr Ajayi", "Mr John", "Great God",
-    "Mr Sunday", "Mr Kenny", "Olawunmi", "Mr Wilson", "Mr Idris", "Azeez", "Godswill",
+    "Mr Sunday", "Mr Kenny", "Olawunmi", "Mr Wilson", "Mr Idris", "Azeez", "Godswill", "Olawale"
   ],
   KETU: ["Semilore", "Miracle", "Yusuf", "Dickson", "Tony", "Habeb", "Lawal", "Ayomide"],
 };
@@ -92,7 +92,7 @@ const VENDORS = {
   "Madam Gift": ["Building block","Magnetic drawing board","Finger Arithmetic","Bubble gun"],
   "KING ROYCE": ["Reachable car charger","Single car charger","5in1 car charger","Executive bag","Handbag","Crossbag"],
   "KYNE-RANDOM": ["Random energy capsule"],
-  "SMART CLEANSER KYNE": ["Smart Cleanser","Sanora capsule","Sanora balm"],
+  "SMART CLEANSER KYNE": ["Smart Cleanser","Sanora capsule","Sanora balm","Verticure"],
   "CEENO LAGOS": ["Nano tapes","Turmeric soaps","Pink lip serum","Shilajit gummies","Brown flower wallpaper","Green flower wallpaper","IMAX SPRAY","Boka toothpaste","Lunavia pen","Fenugreek seed tea"],
   "ISYLIFE": ["Richard mille","Cctv","INVICTA","Lamborghini","Smart watch","Daniel Wellington","Bvlgart watch","Nepic watch"],
   "GLAMOUR TROVE": ["Kids multivitamin"],
