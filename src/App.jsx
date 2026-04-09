@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
 const BRANCHES = ["AJA", "IDIMU", "KETU"];
@@ -10,7 +10,7 @@ const RIDERS = {
     "Damilola", "Oyindamola", "Philip", "Solomon", "Teemah",
     "Bright", "Jeremiah", "Joseph", "Tommy", "Mr Tobi", "Mr Ade",
     "Segun", "Mr Kingsley", "Mr Ajayi", "Mr John", "Great God",
-    "Mr Sunday", "Mr Kenny", "Olawunmi", "Mr Wilson", "Mr Idris", "Azeez", "Godswill",
+    "Mr Sunday", "Mr Kenny", "Olawunmi", "Mr Wilson", "Mr Idris", "Azeez", "Godswill", "Olawale"
   ],
   KETU: ["Semilore", "Miracle", "Yusuf", "Dickson", "Tony", "Habeb", "Lawal", "Ayomide"],
 };
@@ -92,7 +92,7 @@ const VENDORS = {
   "Madam Gift": ["Building block","Magnetic drawing board","Finger Arithmetic","Bubble gun"],
   "KING ROYCE": ["Reachable car charger","Single car charger","5in1 car charger","Executive bag","Handbag","Crossbag"],
   "KYNE-RANDOM": ["Random energy capsule"],
-  "SMART CLEANSER KYNE": ["Smart Cleanser","Sanora capsule","Sanora balm"],
+  "SMART CLEANSER KYNE": ["Smart Cleanser","Sanora capsule","Sanora balm","Verticure"],
   "CEENO LAGOS": ["Nano tapes","Turmeric soaps","Pink lip serum","Shilajit gummies","Brown flower wallpaper","Green flower wallpaper","IMAX SPRAY","Boka toothpaste","Lunavia pen","Fenugreek seed tea"],
   "ISYLIFE": ["Richard mille","Cctv","INVICTA","Lamborghini","Smart watch","Daniel Wellington","Bvlgart watch","Nepic watch"],
   "GLAMOUR TROVE": ["Kids multivitamin"],
@@ -636,61 +636,30 @@ function BonusRow({ name, count, period }) {
 
 // ─── VENDOR COMBO (isolated state so it never crashes parent) ────────────────
 function VendorCombo({ value, onChange }) {
-  const [search, setSearch] = useState(value || "");
-  const [open, setOpen]     = useState(false);
+  const [search, setSearch] = useState("");
 
-  // Sync if parent resets value (e.g. form clear)
-  useEffect(() => { setSearch(value || ""); }, [value]);
-
-  const filtered = VENDOR_NAMES.filter(v => {
-    const q = search.toLowerCase();
-    return !q || v.toLowerCase().includes(q);
-  });
-
-  function select(v) {
-    setSearch(v);
-    setOpen(false);
-    onChange(v);
-  }
+  const filtered = search.trim()
+    ? VENDOR_NAMES.filter(v => v.toLowerCase().includes(search.trim().toLowerCase()))
+    : VENDOR_NAMES;
 
   return (
-    <div style={{ position: "relative" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
       <input
         className="k-input"
-        placeholder="Type to search vendor..."
+        placeholder="Filter vendors... (e.g. LA)"
         value={search}
         autoComplete="off"
-        onFocus={() => setOpen(true)}
-        onChange={e => { setSearch(e.target.value); setOpen(true); onChange(""); }}
+        onChange={e => { setSearch(e.target.value); onChange(""); }}
+        style={{ marginBottom: "2px" }}
       />
-      {open && (
-        <>
-          <div style={{
-            position: "absolute", top: "100%", left: 0, right: 0, zIndex: 200,
-            background: "#fff", border: "1.5px solid var(--border2)",
-            borderRadius: "var(--r-sm)", boxShadow: "var(--shadow-md)",
-            maxHeight: "200px", overflowY: "auto", marginTop: "2px"
-          }}>
-            {filtered.length === 0
-              ? <p style={{ padding: "10px 14px", fontSize: "12px", color: "var(--text-faint)" }}>No vendors found</p>
-              : filtered.map(v => (
-                <div key={v}
-                  onMouseDown={e => { e.preventDefault(); select(v); }}
-                  style={{
-                    padding: "10px 14px", fontSize: "13px", fontWeight: 500,
-                    cursor: "pointer", color: "var(--text)",
-                    background: value === v ? "var(--blue-pale)" : "transparent",
-                    borderBottom: "1px solid var(--border)",
-                  }}>
-                  {v}
-                </div>
-              ))
-            }
-          </div>
-          <div style={{ position: "fixed", inset: 0, zIndex: 199 }}
-            onClick={() => setOpen(false)} />
-        </>
-      )}
+      <select
+        className="k-input"
+        value={value || ""}
+        onChange={e => onChange(e.target.value)}
+      >
+        <option value="">Select vendor...</option>
+        {filtered.map(v => <option key={v} value={v}>{v}</option>)}
+      </select>
     </div>
   );
 }
@@ -809,10 +778,7 @@ function RiderManagerView({ branch, onLogout }) {
   // ── Assign state ──
   const [assignRider, setAssignRider] = useState({}); // { orderId: riderName }
   const [phoneSearch, setPhoneSearch] = useState("");
-  const [phoneSearchD, setPhoneSearchD] = useState("");
   const [updateSearch, setUpdateSearch] = useState("");
-  const [updateSearchD, setUpdateSearchD] = useState("");
-  const [assignPage, setAssignPage] = useState(20);
   const [selectedRider, setSelectedRider] = useState("");
   // ── Edit delivered state ──
   const [editDeliveredId, setEditDeliveredId] = useState(null);
@@ -827,27 +793,12 @@ function RiderManagerView({ branch, onLogout }) {
     setSyncing(true);
     Promise.all([sheetGet("Orders"), sheetGet("RoadExpenses")])
       .then(([o, r]) => {
-        // Only keep last 7 days of orders — rider manager never needs older data for daily ops
-        const cutoff = (() => {
-          const d = new Date(); d.setDate(d.getDate() - 7);
-          return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
-        })();
-        setOrders(o.filter(x => x.branch === branch && x.date >= cutoff));
+        setOrders(o.filter(x => x.branch === branch));
         const re = {};
         r.filter(x => x.branch === branch).forEach(x => { re[`${x.rider}-${x.date}`] = x; });
         setRoadExpenses(re);
       }).catch(() => {}).finally(() => setSyncing(false));
   }, [branch]);
-
-  useEffect(() => {
-    const t = setTimeout(() => setPhoneSearchD(phoneSearch), 300);
-    return () => clearTimeout(t);
-  }, [phoneSearch]);
-
-  useEffect(() => {
-    const t = setTimeout(() => setUpdateSearchD(updateSearch), 300);
-    return () => clearTimeout(t);
-  }, [updateSearch]);
 
   function addProduct() {
     setForm(f => ({ ...f, products: [...f.products, { ...blankProduct }] }));
@@ -955,12 +906,12 @@ function RiderManagerView({ branch, onLogout }) {
     sheetAdd("RoadExpenses", re).catch(() => {});
   }
 
-  const todayOrders  = useMemo(() => filterByPeriod(orders, "today", ""), [orders]);
-  const unassigned   = useMemo(() => todayOrders.filter(o => o.status === "Unassigned"), [todayOrders]);
-  const filtered     = useMemo(() => filterByPeriod(orders, mode, customDate, customDateEnd), [orders, mode, customDate, customDateEnd]);
-  const pending      = useMemo(() => filtered.filter(o => o.status === "Pending"), [filtered]);
-  const delivered    = useMemo(() => filtered.filter(o => o.status === "Delivered"), [filtered]);
-  const failed       = useMemo(() => filtered.filter(o => o.status === "Failed"), [filtered]);
+  const todayOrders  = filterByPeriod(orders, "today", "");
+  const unassigned   = todayOrders.filter(o => o.status === "Unassigned");
+  const filtered     = filterByPeriod(orders, mode, customDate, customDateEnd);
+  const pending      = filtered.filter(o => o.status === "Pending");
+  const delivered    = filtered.filter(o => o.status === "Delivered");
+  const failed       = filtered.filter(o => o.status === "Failed");
   const period       = getBonusPeriod();
 
   const TABS = [
@@ -1114,30 +1065,21 @@ function RiderManagerView({ branch, onLogout }) {
                   className="k-input"
                   placeholder="🔍 Search by phone number or name..."
                   value={phoneSearch}
-                  onChange={e => { setPhoneSearch(e.target.value); setAssignPage(20); }}
+                  onChange={e => setPhoneSearch(e.target.value)}
                   style={{ marginBottom: "12px" }}
                   autoComplete="off"
                 />
-                {(() => {
-                  const filtered = phoneSearchD.trim()
-                    ? unassigned.filter(o => {
-                        const q = phoneSearchD.trim().toLowerCase();
-                        const phone = String(o.phone || "").replace(/^'/, "").replace(/\s/g, "");
-                        const name  = (o.customerName || "").toLowerCase();
-                        const addr  = (o.address || "").toLowerCase();
-                        return phone.includes(q) || name.includes(q) || addr.includes(q);
-                      })
-                    : unassigned;
-                  const visible = filtered.slice(0, assignPage);
-                  return (
-                    <>
-                      {phoneSearchD.trim() && (
-                        <p style={{ fontSize: "12px", color: "var(--text-faint)", marginBottom: "8px" }}>
-                          {filtered.length === 0 ? "No matches found" : `Showing ${visible.length} of ${filtered.length} matches`}
-                        </p>
-                      )}
-                      <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                      {visible.map(o => {
+                <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                {(phoneSearch.trim()
+                  ? unassigned.filter(o => {
+                      const q = phoneSearch.trim().toLowerCase();
+                      const phone = String(o.phone || "").replace(/^'/, "").replace(/\s/g, "");
+                      const name  = (o.customerName || "").toLowerCase();
+                      const addr  = (o.address || "").toLowerCase();
+                      return phone.includes(q) || name.includes(q) || addr.includes(q);
+                    })
+                  : unassigned
+                ).map(o => {
                   const prods = getProducts(o);
                   const total = prods.reduce((s, p) => s + (Number(p.price) || 0), 0);
                   return (
@@ -1198,17 +1140,7 @@ function RiderManagerView({ branch, onLogout }) {
                     </div>
                   );
                 })}
-                      </div>
-                      {filtered.length > assignPage && (
-                        <button
-                          onClick={() => setAssignPage(p => p + 20)}
-                          style={{ width: "100%", marginTop: "12px", padding: "12px", background: "var(--blue-pale)", border: "1.5px solid var(--blue-pale2)", borderRadius: "var(--r-sm)", color: "var(--blue)", fontSize: "13px", fontWeight: 700, cursor: "pointer" }}>
-                          Show more ({filtered.length - assignPage} remaining)
-                        </button>
-                      )}
-                    </>
-                  );
-                })()}
+                </div>
               </>
             )}
           </div>
@@ -1290,7 +1222,7 @@ function RiderManagerView({ branch, onLogout }) {
         {/* ── UPDATE ORDERS TAB ── */}
         {tab === "update" && (
           <div className="fade-in">
-            <SectionTitle title="Update Orders" sub="Mark delivered or failed, add road expenses" />
+            <SectionTitle title="Update Orders" sub="Select a rider to see and update their orders" />
             <PeriodFilter mode={mode} setMode={setMode} customDate={customDate} setCustomDate={setCustomDate} customDateEnd={customDateEnd} setCustomDateEnd={setCustomDateEnd} />
 
             {/* Road expense section */}
@@ -1338,7 +1270,7 @@ function RiderManagerView({ branch, onLogout }) {
               )}
             </Card>
 
-            {/* Edit modal */}
+            {/* Edit modal (mark delivered) */}
             {editingId && editForm && (
               <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
                 <div className="slide-down" style={{ background: "#fff", borderRadius: "var(--r-lg)", padding: "24px", width: "100%", maxWidth: "500px", maxHeight: "90vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,.3)" }}>
@@ -1377,9 +1309,7 @@ function RiderManagerView({ branch, onLogout }) {
                   ))}
                   <div style={{ background: "var(--blue-pale)", border: "1.5px solid var(--blue-pale2)", borderRadius: "var(--r-sm)", padding: "10px 14px", marginBottom: "14px", display: "flex", justifyContent: "space-between" }}>
                     <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-dim)" }}>Total</span>
-                    <span style={{ fontFamily: "var(--display)", fontSize: "14px", fontWeight: 800, color: "var(--blue)" }}>
-                      {fmt(editForm.products.reduce((s, p) => s + (Number(p.price) || 0), 0))}
-                    </span>
+                    <span style={{ fontFamily: "var(--display)", fontSize: "14px", fontWeight: 800, color: "var(--blue)" }}>{fmt(editForm.products.reduce((s, p) => s + (Number(p.price) || 0), 0))}</span>
                   </div>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginBottom: "12px" }}>
                     <div><label className="k-label">Road Expense (₦)</label><input type="number" className="k-input" placeholder="0" value={editForm.roadExpense} onChange={e => setEditForm(f => ({ ...f, roadExpense: e.target.value }))}/></div>
@@ -1404,122 +1334,127 @@ function RiderManagerView({ branch, onLogout }) {
               >
                 <option value="">— Show all riders —</option>
                 {RIDERS[branch].map(r => {
-                  const rPending   = pending.filter(o => o.rider === r).length;
-                  const rDelivered = delivered.filter(o => o.rider === r).length;
-                  const total = rPending + rDelivered;
+                  const rPending   = filtered.filter(o => o.rider === r && o.status === "Pending").length;
+                  const rDelivered = filtered.filter(o => o.rider === r && o.status === "Delivered").length;
+                  const rFailed    = filtered.filter(o => o.rider === r && o.status === "Failed").length;
+                  const total = rPending + rDelivered + rFailed;
                   if (total === 0) return null;
-                  return (
-                    <option key={r} value={r}>
-                      {r} — {rPending > 0 ? `${rPending} pending` : ""}{rPending > 0 && rDelivered > 0 ? ", " : ""}{rDelivered > 0 ? `${rDelivered} delivered` : ""}
-                    </option>
-                  );
+                  return <option key={r} value={r}>{r} — {rPending > 0 ? `${rPending} pending` : ""}{rPending > 0 && rDelivered > 0 ? ", " : ""}{rDelivered > 0 ? `${rDelivered} delivered` : ""}</option>;
                 })}
               </select>
             </div>
 
-            {/* Pending */}
+            {/* Orders for selected rider (or all if none selected) */}
             {(() => {
-              const list = selectedRider ? pending.filter(o => o.rider === selectedRider) : pending;
-              if (list.length === 0) return null;
+              const riderPending   = (selectedRider ? pending.filter(o => o.rider === selectedRider) : pending);
+              const riderDelivered = (selectedRider ? delivered.filter(o => o.rider === selectedRider) : delivered);
+              const riderFailed    = (selectedRider ? failed.filter(o => o.rider === selectedRider) : failed);
+
               return (
                 <>
-                  <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--amber)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: "8px" }}>⏳ Pending ({list.length})</p>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: "20px" }}>
-                    {list.map(o => (
-                      <div key={o.id} style={{ background: "#fff", border: "1.5px solid var(--border)", borderRadius: "var(--r)", padding: "12px 14px", boxShadow: "var(--shadow)" }}>
-                        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "8px" }}>
-                          <div style={{ flex: 1 }}>
-                            <p style={{ fontSize: "14px", fontWeight: 700 }}>{o.customerName}</p>
-                            {o.phone && <a href={`tel:${o.phone}`} style={{ fontSize: "13px", color: "var(--blue)", marginTop: "3px", display: "block", fontWeight: 600, textDecoration: "none" }}>📞 {o.phone}</a>}
-                            <p style={{ fontSize: "11px", color: "var(--text-faint)", marginTop: "3px" }}>📍 {o.address}</p>
-                            <p style={{ fontSize: "11px", color: "var(--text-faint)", marginTop: "2px" }}>🛵 {o.rider} · 📅 {o.date}</p>
-                            <div style={{ marginTop: "8px", display: "flex", flexDirection: "column", gap: "4px" }}>
-                              {getProducts(o).map((p, i) => (
-                                <div key={i} style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--r-sm)", padding: "6px 10px", display: "flex", justifyContent: "space-between" }}>
-                                  <span style={{ fontSize: "12px", fontWeight: 600 }}>{p.name} ×{p.qty}</span>
-                                  <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--blue)" }}>{fmt(p.price)}</span>
+                  {/* Pending */}
+                  {riderPending.length > 0 && (
+                    <>
+                      <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--amber)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: "8px" }}>
+                        ⏳ Pending ({riderPending.length})
+                      </p>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: "20px" }}>
+                        {riderPending.map(o => (
+                          <div key={o.id} style={{ background: "#fff", border: "1.5px solid var(--border)", borderRadius: "var(--r)", padding: "12px 14px", boxShadow: "var(--shadow)" }}>
+                            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "8px" }}>
+                              <div style={{ flex: 1 }}>
+                                <p style={{ fontSize: "14px", fontWeight: 700 }}>{o.customerName}</p>
+                                {o.phone && <a href={`tel:${o.phone}`} style={{ fontSize: "13px", color: "var(--blue)", marginTop: "3px", display: "block", fontWeight: 600, textDecoration: "none" }}>📞 {o.phone}</a>}
+                                <p style={{ fontSize: "11px", color: "var(--text-faint)", marginTop: "3px" }}>📍 {o.address}</p>
+                                <p style={{ fontSize: "11px", color: "var(--text-faint)", marginTop: "2px" }}>🛵 {o.rider} · 📅 {o.date}</p>
+                                <div style={{ marginTop: "8px", display: "flex", flexDirection: "column", gap: "4px" }}>
+                                  {getProducts(o).map((p, i) => (
+                                    <div key={i} style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--r-sm)", padding: "6px 10px", display: "flex", justifyContent: "space-between" }}>
+                                      <span style={{ fontSize: "12px", fontWeight: 600 }}>{p.name} ×{p.qty}</span>
+                                      <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--blue)" }}>{fmt(p.price)}</span>
+                                    </div>
+                                  ))}
                                 </div>
-                              ))}
+                              </div>
+                              <span style={{ fontFamily: "var(--display)", fontSize: "16px", fontWeight: 800, color: "var(--blue)", marginLeft: "12px", flexShrink: 0 }}>
+                                {fmt(getProducts(o).reduce((s, p) => s + (Number(p.price) || 0), 0))}
+                              </span>
+                            </div>
+                            <div style={{ display: "flex", gap: "8px", paddingTop: "12px", borderTop: "1px solid var(--border)" }}>
+                              <button onClick={() => markDelivered(o.id)} style={{ flex: 1, padding: "13px", background: "var(--green)", border: "none", borderRadius: "var(--r-sm)", color: "#fff", fontSize: "13px", fontWeight: 700, cursor: "pointer" }}>✓ Delivered</button>
+                              <button onClick={() => markFailed(o.id)} style={{ flex: 1, padding: "13px", background: "#fef2f2", border: "1.5px solid #fecaca", borderRadius: "var(--r-sm)", color: "var(--red)", fontSize: "13px", fontWeight: 700, cursor: "pointer" }}>✕ Failed</button>
                             </div>
                           </div>
-                          <span style={{ fontFamily: "var(--display)", fontSize: "16px", fontWeight: 800, color: "var(--blue)", marginLeft: "12px", flexShrink: 0 }}>
-                            {fmt(getProducts(o).reduce((s, p) => s + (Number(p.price) || 0), 0))}
-                          </span>
-                        </div>
-                        <div style={{ display: "flex", gap: "8px", paddingTop: "12px", borderTop: "1px solid var(--border)" }}>
-                          <button onClick={() => markDelivered(o.id)} style={{ flex: 1, padding: "13px", background: "var(--green)", border: "none", borderRadius: "var(--r-sm)", color: "#fff", fontSize: "13px", fontWeight: 700, cursor: "pointer" }}>✓ Delivered</button>
-                          <button onClick={() => markFailed(o.id)} style={{ flex: 1, padding: "13px", background: "#fef2f2", border: "1.5px solid #fecaca", borderRadius: "var(--r-sm)", color: "var(--red)", fontSize: "13px", fontWeight: 700, cursor: "pointer" }}>✕ Failed</button>
-                        </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
-                </>
-              );
-            })()}
+                    </>
+                  )}
 
-            {/* Delivered */}
-            {(() => {
-              const list = selectedRider ? delivered.filter(o => o.rider === selectedRider) : delivered;
-              if (list.length === 0) return null;
-              return (
-                <>
-                  <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--green)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: "8px" }}>✓ Delivered ({list.length})</p>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: "20px" }}>
-                    {list.map(o => (
-                      <div key={o.id} style={{ background: "#ecfdf5", border: "1.5px solid #a7f3d0", borderRadius: "var(--r)", padding: "12px 14px" }}>
-                        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
-                          <div style={{ flex: 1 }}>
-                            <p style={{ fontSize: "13px", fontWeight: 700 }}>{o.customerName}</p>
-                            {o.phone && <a href={`tel:${o.phone}`} style={{ fontSize: "12px", color: "var(--blue)", marginTop: "2px", display: "block", fontWeight: 600, textDecoration: "none" }}>📞 {o.phone}</a>}
-                            <p style={{ fontSize: "11px", color: "var(--text-faint)", marginTop: "2px" }}>🛵 {o.rider} · 📅 {o.date}</p>
-                            <div style={{ marginTop: "6px", display: "flex", flexDirection: "column", gap: "3px" }}>
-                              {getProducts(o).map((p, i) => (
-                                <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "5px 8px", background: "rgba(5,150,105,.06)", borderRadius: "var(--r-sm)" }}>
-                                  <span style={{ fontSize: "12px", fontWeight: 600 }}>{p.name} ×{p.qty}</span>
-                                  <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--green)" }}>{fmt(p.price)}</span>
+                  {/* Delivered */}
+                  {riderDelivered.length > 0 && (
+                    <>
+                      <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--green)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: "8px" }}>
+                        ✓ Delivered ({riderDelivered.length})
+                      </p>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: "20px" }}>
+                        {riderDelivered.map(o => (
+                          <div key={o.id} style={{ background: "#ecfdf5", border: "1.5px solid #a7f3d0", borderRadius: "var(--r)", padding: "12px 14px" }}>
+                            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
+                              <div style={{ flex: 1 }}>
+                                <p style={{ fontSize: "13px", fontWeight: 700 }}>{o.customerName}</p>
+                                {o.phone && <a href={`tel:${o.phone}`} style={{ fontSize: "12px", color: "var(--blue)", marginTop: "2px", display: "block", fontWeight: 600, textDecoration: "none" }}>📞 {o.phone}</a>}
+                                <p style={{ fontSize: "11px", color: "var(--text-faint)", marginTop: "2px" }}>🛵 {o.rider} · 📅 {o.date}</p>
+                                <div style={{ marginTop: "6px", display: "flex", flexDirection: "column", gap: "3px" }}>
+                                  {getProducts(o).map((p, i) => (
+                                    <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "5px 8px", background: "rgba(5,150,105,.06)", borderRadius: "var(--r-sm)" }}>
+                                      <span style={{ fontSize: "12px", fontWeight: 600 }}>{p.name} ×{p.qty}</span>
+                                      <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--green)" }}>{fmt(p.price)}</span>
+                                    </div>
+                                  ))}
                                 </div>
-                              ))}
+                              </div>
+                              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "6px", marginLeft: "12px", flexShrink: 0 }}>
+                                <span style={{ fontFamily: "var(--display)", fontSize: "15px", fontWeight: 800, color: "var(--green)" }}>
+                                  {fmt(getProducts(o).reduce((s, p) => s + (Number(p.price) || 0), 0))}
+                                </span>
+                                <button onClick={() => {
+                                  const prods = getProducts(o);
+                                  setEditDeliveredId(o.id);
+                                  setEditDeliveredForm({ products: prods.map(p => ({ ...p })) });
+                                }} style={{ padding: "5px 10px", background: "#fffbeb", border: "1.5px solid #fde68a", borderRadius: "var(--r-sm)", color: "var(--amber)", fontSize: "11px", fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
+                                  ✏ Edit
+                                </button>
+                              </div>
                             </div>
                           </div>
-                          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "6px", marginLeft: "12px", flexShrink: 0 }}>
-                            <span style={{ fontFamily: "var(--display)", fontSize: "15px", fontWeight: 800, color: "var(--green)" }}>
-                              {fmt(getProducts(o).reduce((s, p) => s + (Number(p.price) || 0), 0))}
-                            </span>
-                            <button onClick={() => { setEditDeliveredId(o.id); setEditDeliveredForm({ products: getProducts(o).map(p => ({ ...p })) }); }}
-                              style={{ padding: "5px 10px", background: "#fffbeb", border: "1.5px solid #fde68a", borderRadius: "var(--r-sm)", color: "var(--amber)", fontSize: "11px", fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
-                              ✏ Edit
-                            </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+
+                  {/* Failed */}
+                  {riderFailed.length > 0 && (
+                    <>
+                      <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-faint)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: "8px" }}>✕ Failed ({riderFailed.length})</p>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "8px", opacity: .6 }}>
+                        {riderFailed.map(o => (
+                          <div key={o.id} style={{ background: "#fff", border: "1.5px solid var(--border)", borderRadius: "var(--r)", padding: "10px 14px" }}>
+                            <p style={{ fontSize: "12px", fontWeight: 500, color: "var(--text-dim)" }}>{o.customerName} · {o.rider}</p>
+                            <p style={{ fontSize: "11px", color: "var(--text-faint)", marginTop: "2px" }}>{getProducts(o).map(p => p.name).join(", ")}</p>
                           </div>
-                        </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
+                    </>
+                  )}
+
+                  {riderPending.length === 0 && riderDelivered.length === 0 && riderFailed.length === 0 && (
+                    <p style={{ textAlign: "center", padding: "48px 0", fontSize: "13px", color: "var(--text-faint)" }}>
+                      {selectedRider ? `No orders for ${selectedRider} in this period` : "No orders in this period"}
+                    </p>
+                  )}
                 </>
               );
             })()}
-
-            {/* Failed */}
-            {(() => {
-              const list = selectedRider ? failed.filter(o => o.rider === selectedRider) : failed;
-              if (list.length === 0) return null;
-              return (
-                <>
-                  <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-faint)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: "8px" }}>✕ Failed ({list.length})</p>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "8px", opacity: .6 }}>
-                    {list.map(o => (
-                      <div key={o.id} style={{ background: "#fff", border: "1.5px solid var(--border)", borderRadius: "var(--r)", padding: "10px 14px" }}>
-                        <p style={{ fontSize: "12px", fontWeight: 500, color: "var(--text-dim)" }}>{o.customerName} · {o.rider}</p>
-                        <p style={{ fontSize: "11px", color: "var(--text-faint)", marginTop: "2px" }}>{getProducts(o).map(p => p.name).join(", ")}</p>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              );
-            })()}
-
-            {pending.length === 0 && delivered.length === 0 && failed.length === 0 && (
-              <p style={{ textAlign: "center", padding: "48px 0", fontSize: "13px", color: "var(--text-faint)" }}>No orders in this period</p>
-            )}
           </div>
         )}
 
