@@ -827,7 +827,12 @@ function RiderManagerView({ branch, onLogout }) {
     setSyncing(true);
     Promise.all([sheetGet("Orders"), sheetGet("RoadExpenses")])
       .then(([o, r]) => {
-        setOrders(o.filter(x => x.branch === branch));
+        // Only keep last 7 days of orders — rider manager never needs older data for daily ops
+        const cutoff = (() => {
+          const d = new Date(); d.setDate(d.getDate() - 7);
+          return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+        })();
+        setOrders(o.filter(x => x.branch === branch && x.date >= cutoff));
         const re = {};
         r.filter(x => x.branch === branch).forEach(x => { re[`${x.rider}-${x.date}`] = x; });
         setRoadExpenses(re);
