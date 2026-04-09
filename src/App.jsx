@@ -775,11 +775,16 @@ function RiderManagerView({ branch, onLogout }) {
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState(null);
 
-  // ── Assign state ──
-  const [assignRider, setAssignRider] = useState({}); // { orderId: riderName }
-  const [phoneSearch, setPhoneSearch] = useState("");
-  const [updateSearch, setUpdateSearch] = useState("");
-  const [selectedRider, setSelectedRider] = useState("");
+{(phoneSearch.trim() ? unassigned.filter(o => {
+  const q = phoneSearch.trim().toLowerCase();
+  
+  // These lines now have safety nets (|| "") to prevent the white screen
+  const phone = String(o.phone || "").replace(/^'/, "").replace(/\s/g, "");
+  const name = String(o.customerName || "").toLowerCase();
+  const addr = String(o.address || "").toLowerCase();
+  
+  return phone.includes(q) || name.includes(q) || addr.includes(q);
+}) : unassigned ).map(o => {
   // ── Edit delivered state ──
   const [editDeliveredId, setEditDeliveredId] = useState(null);
   const [editDeliveredForm, setEditDeliveredForm] = useState(null);
