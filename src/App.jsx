@@ -812,6 +812,7 @@ function RiderManagerView({ branch, onLogout }) {
   const [phoneSearchD, setPhoneSearchD] = useState("");
   const [updateSearch, setUpdateSearch] = useState("");
   const [updateSearchD, setUpdateSearchD] = useState("");
+  const [assignPage, setAssignPage] = useState(20);
   // ── Edit delivered state ──
   const [editDeliveredId, setEditDeliveredId] = useState(null);
   const [editDeliveredForm, setEditDeliveredForm] = useState(null);
@@ -1107,20 +1108,30 @@ function RiderManagerView({ branch, onLogout }) {
                   className="k-input"
                   placeholder="🔍 Search by phone number or name..."
                   value={phoneSearch}
-                  onChange={e => setPhoneSearch(e.target.value)}
+                  onChange={e => { setPhoneSearch(e.target.value); setAssignPage(20); }}
                   style={{ marginBottom: "12px" }}
                   autoComplete="off"
                 />
-                <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                {(phoneSearchD.trim()
-                  ? unassigned.filter(o => {
-                      const q = phoneSearchD.trim().toLowerCase();
-                      const phone = String(o.phone || "").replace(/^'/, "").replace(/\s/g, "");
-                      const name  = (o.customerName || "").toLowerCase();
-                      return phone.includes(q) || name.includes(q);
-                    })
-                  : unassigned
-                ).map(o => {
+                {(() => {
+                  const filtered = phoneSearchD.trim()
+                    ? unassigned.filter(o => {
+                        const q = phoneSearchD.trim().toLowerCase();
+                        const phone = String(o.phone || "").replace(/^'/, "").replace(/\s/g, "");
+                        const name  = (o.customerName || "").toLowerCase();
+                        const addr  = (o.address || "").toLowerCase();
+                        return phone.includes(q) || name.includes(q) || addr.includes(q);
+                      })
+                    : unassigned;
+                  const visible = filtered.slice(0, assignPage);
+                  return (
+                    <>
+                      {phoneSearchD.trim() && (
+                        <p style={{ fontSize: "12px", color: "var(--text-faint)", marginBottom: "8px" }}>
+                          {filtered.length === 0 ? "No matches found" : `Showing ${visible.length} of ${filtered.length} matches`}
+                        </p>
+                      )}
+                      <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                      {visible.map(o => {
                   const prods = getProducts(o);
                   const total = prods.reduce((s, p) => s + (Number(p.price) || 0), 0);
                   return (
@@ -1181,7 +1192,17 @@ function RiderManagerView({ branch, onLogout }) {
                     </div>
                   );
                 })}
-                </div>
+                      </div>
+                      {filtered.length > assignPage && (
+                        <button
+                          onClick={() => setAssignPage(p => p + 20)}
+                          style={{ width: "100%", marginTop: "12px", padding: "12px", background: "var(--blue-pale)", border: "1.5px solid var(--blue-pale2)", borderRadius: "var(--r-sm)", color: "var(--blue)", fontSize: "13px", fontWeight: 700, cursor: "pointer" }}>
+                          Show more ({filtered.length - assignPage} remaining)
+                        </button>
+                      )}
+                    </>
+                  );
+                })()}
               </>
             )}
           </div>
