@@ -10,7 +10,7 @@ const RIDERS = {
     "Damilola", "Oyindamola", "Philip", "Solomon", "Teemah",
     "Bright", "Jeremiah", "Joseph", "Tommy", "Mr Tobi", "Mr Ade",
     "Segun", "Mr Kingsley", "Mr Ajayi", "Mr John", "Great God",
-    "Mr Sunday", "Mr Kenny", "Olawunmi", "Mr Wilson", "Mr Idris", "Azeez", "Godswill", "Olawale", "Sule"
+    "Mr Sunday", "Mr Kenny", "Olawunmi", "Mr Wilson", "Mr Idris", "Azeez", "Godswill", "Olawale", "Sule",
   ],
   KETU: ["Semilore", "Miracle", "Yusuf", "Dickson", "Tony", "Habeb", "Lawal", "Ayomide"],
 };
@@ -1359,73 +1359,113 @@ function RiderManagerView({ branch, onLogout }) {
               </div>
             )}
 
-            {/* Search bar */}
-            <input
-              className="k-input"
-              placeholder="🔍 Search by phone or name..."
-              value={updateSearch}
-              onChange={e => setUpdateSearch(e.target.value)}
-              style={{ marginBottom: "12px" }}
-            />
+            {/* ── RIDER FILTER DROPDOWN ── */}
+            <div style={{ marginBottom: "12px" }}>
+              <label className="k-label">Filter by Rider</label>
+              <select
+                className="k-input"
+                value={selectedRider}
+                onChange={e => setSelectedRider(e.target.value)}
+                style={{ fontWeight: 600, fontSize: "15px" }}
+              >
+                <option value="">— All riders —</option>
+                {RIDERS[branch].map(r => {
+                  const rPending   = pending.filter(o => o.rider === r).length;
+                  const rDelivered = delivered.filter(o => o.rider === r).length;
+                  const total = rPending + rDelivered + failed.filter(o => o.rider === r).length;
+                  if (total === 0) return null;
+                  return (
+                    <option key={r} value={r}>
+                      {r}{rPending > 0 ? ` — ${rPending} pending` : ""}{rDelivered > 0 ? `${rPending > 0 ? "," : " —"} ${rDelivered} delivered` : ""}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
 
-            {/* Pending orders — grouped by rider */}
+            {/* ── DUPLICATE WARNING ── */}
             {(() => {
-              const q = updateSearch.trim().toLowerCase();
-              const filteredPending = q
-                ? pending.filter(o => {
-                    const phone = String(o.phone || "").replace(/^'/, "").replace(/\s/g, "");
-                    return phone.includes(q) || (o.customerName || "").toLowerCase().includes(q);
-                  })
-                : pending;
-              if (filteredPending.length === 0) return null;
-              // Group by rider
-              const riderGroups = {};
-              filteredPending.forEach(o => {
-                const r = o.rider || "Unassigned";
-                if (!riderGroups[r]) riderGroups[r] = [];
-                riderGroups[r].push(o);
+              // Detect duplicates: same customerName + same phone + same date
+              const allVisible = [...pending, ...delivered, ...failed];
+              const seen = {};
+              const dupIds = new Set();
+              allVisible.forEach(o => {
+                const key = `${(o.customerName||"").trim().toLowerCase()}|${(o.phone||"").replace(/^'/,"").trim()}|${o.date}`;
+                if (seen[key]) { dupIds.add(o.id); dupIds.add(seen[key]); }
+                else seen[key] = o.id;
               });
+              if (dupIds.size === 0) return null;
+              return (
+                <div style={{ background: "#fffbeb", border: "1.5px solid #fde68a", borderRadius: "var(--r-sm)", padding: "10px 14px", marginBottom: "12px", display: "flex", alignItems: "center", gap: "10px" }}>
+                  <span style={{ fontSize: "18px" }}>⚠️</span>
+                  <div>
+                    <p style={{ fontSize: "13px", fontWeight: 700, color: "var(--amber)" }}>{dupIds.size} possible duplicate order{dupIds.size !== 1 ? "s" : ""} detected</p>
+                    <p style={{ fontSize: "11px", color: "#92400e", marginTop: "2px" }}>Same customer name, phone and date — check before marking delivered</p>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* ── PENDING ── */}
+            {(() => {
+              const riderPending = selectedRider ? pending.filter(o => o.rider === selectedRider) : pending;
+              if (riderPending.length === 0) return null;
+              // Detect duplicates within pending
+              const seen = {}; const dupIds = new Set();
+              riderPending.forEach(o => {
+                const key = `${(o.customerName||"").trim().toLowerCase()}|${(o.phone||"").replace(/^'/,"").trim()}|${o.date}`;
+                if (seen[key]) { dupIds.add(o.id); dupIds.add(seen[key]); }
+                else seen[key] = o.id;
+              });
+              // Group by rider
+              const groups = {};
+              riderPending.forEach(o => { const r = o.rider || "Unassigned"; if (!groups[r]) groups[r] = []; groups[r].push(o); });
               return (
                 <>
                   <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--amber)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: "12px" }}>
-                    ⏳ Pending ({filteredPending.length}{q && filteredPending.length !== pending.length ? ` of ${pending.length}` : ""})
+                    ⏳ Pending ({riderPending.length})
                   </p>
-                  {Object.entries(riderGroups).map(([rider, rOrders]) => (
+                  {Object.entries(groups).map(([rider, rOrders]) => (
                     <div key={rider} style={{ marginBottom: "20px" }}>
-                      {/* Rider header */}
                       <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px", padding: "8px 12px", background: "var(--navy)", borderRadius: "var(--r-sm)" }}>
                         <RiderAvatar name={rider} size={26} />
                         <span style={{ fontFamily: "var(--display)", fontSize: "13px", fontWeight: 700, color: "#fff" }}>{rider}</span>
                         <span style={{ fontSize: "11px", color: "rgba(255,255,255,.45)", marginLeft: "auto" }}>{rOrders.length} order{rOrders.length !== 1 ? "s" : ""}</span>
                       </div>
                       <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                        {rOrders.map(o => (
-                          <div key={o.id} style={{ background: "#fff", border: "1.5px solid var(--border)", borderRadius: "var(--r)", padding: "12px 14px", boxShadow: "var(--shadow)" }}>
-                            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "8px" }}>
-                              <div style={{ flex: 1 }}>
-                                <p style={{ fontSize: "14px", fontWeight: 700 }}>{o.customerName}</p>
-                                {o.phone && <a href={`tel:${o.phone}`} style={{ fontSize: "13px", color: "var(--blue)", marginTop: "3px", display: "block", fontWeight: 600, textDecoration: "none" }}>📞 {o.phone}</a>}
-                                <p style={{ fontSize: "11px", color: "var(--text-faint)", marginTop: "3px" }}>📍 {o.address}</p>
-                                <p style={{ fontSize: "11px", color: "var(--text-faint)", marginTop: "2px" }}>📅 {o.date}</p>
-                                <div style={{ marginTop: "8px", display: "flex", flexDirection: "column", gap: "4px" }}>
-                                  {getProducts(o).map((p, i) => (
-                                    <div key={i} style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--r-sm)", padding: "6px 10px", display: "flex", justifyContent: "space-between" }}>
-                                      <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--text)" }}>{p.name} ×{p.qty}</span>
-                                      <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--blue)" }}>{fmt(p.price)}</span>
-                                    </div>
-                                  ))}
+                        {rOrders.map(o => {
+                          const isDup = dupIds.has(o.id);
+                          return (
+                            <div key={o.id} style={{ background: isDup ? "#fffbeb" : "#fff", border: `1.5px solid ${isDup ? "#fde68a" : "var(--border)"}`, borderRadius: "var(--r)", padding: "12px 14px", boxShadow: "var(--shadow)" }}>
+                              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "8px" }}>
+                                <div style={{ flex: 1 }}>
+                                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                                    <p style={{ fontSize: "14px", fontWeight: 700 }}>{o.customerName}</p>
+                                    {isDup && <span style={{ fontSize: "10px", fontWeight: 700, color: "var(--amber)", background: "#fde68a", padding: "1px 6px", borderRadius: "99px" }}>⚠ DUPLICATE</span>}
+                                  </div>
+                                  {o.phone && <a href={`tel:${o.phone}`} style={{ fontSize: "13px", color: "var(--blue)", marginTop: "3px", display: "block", fontWeight: 600, textDecoration: "none" }}>📞 {o.phone}</a>}
+                                  <p style={{ fontSize: "11px", color: "var(--text-faint)", marginTop: "3px" }}>📍 {o.address}</p>
+                                  <p style={{ fontSize: "11px", color: "var(--text-faint)", marginTop: "2px" }}>📅 {o.date}</p>
+                                  <div style={{ marginTop: "8px", display: "flex", flexDirection: "column", gap: "4px" }}>
+                                    {getProducts(o).map((p, i) => (
+                                      <div key={i} style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--r-sm)", padding: "6px 10px", display: "flex", justifyContent: "space-between" }}>
+                                        <span style={{ fontSize: "12px", fontWeight: 600 }}>{p.name} ×{p.qty}</span>
+                                        <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--blue)" }}>{fmt(p.price)}</span>
+                                      </div>
+                                    ))}
+                                  </div>
                                 </div>
+                                <span style={{ fontFamily: "var(--display)", fontSize: "16px", fontWeight: 800, color: "var(--blue)", marginLeft: "12px", flexShrink: 0 }}>
+                                  {fmt(getProducts(o).reduce((s, p) => s + (Number(p.price) || 0), 0))}
+                                </span>
                               </div>
-                              <span style={{ fontFamily: "var(--display)", fontSize: "16px", fontWeight: 800, color: "var(--blue)", marginLeft: "12px", flexShrink: 0, alignSelf: "flex-start" }}>
-                                {fmt(getProducts(o).reduce((s, p) => s + (Number(p.price) || 0), 0))}
-                              </span>
+                              <div style={{ display: "flex", gap: "8px", paddingTop: "12px", borderTop: "1px solid var(--border)" }}>
+                                <button onClick={() => markDelivered(o.id)} style={{ flex: 1, padding: "13px", background: "var(--green)", border: "none", borderRadius: "var(--r-sm)", color: "#fff", fontSize: "13px", fontWeight: 700, cursor: "pointer" }}>✓ Delivered</button>
+                                <button onClick={() => markFailed(o.id)} style={{ flex: 1, padding: "13px", background: "#fef2f2", border: "1.5px solid #fecaca", borderRadius: "var(--r-sm)", color: "var(--red)", fontSize: "13px", fontWeight: 700, cursor: "pointer" }}>✕ Failed</button>
+                              </div>
                             </div>
-                            <div style={{ display: "flex", gap: "8px", paddingTop: "12px", borderTop: "1px solid var(--border)" }}>
-                              <button onClick={() => markDelivered(o.id)} style={{ flex: 1, padding: "13px", background: "var(--green)", border: "none", borderRadius: "var(--r-sm)", color: "#fff", fontSize: "13px", fontWeight: 700, cursor: "pointer" }}>✓ Delivered</button>
-                              <button onClick={() => markFailed(o.id)} style={{ flex: 1, padding: "13px", background: "#fef2f2", border: "1.5px solid #fecaca", borderRadius: "var(--r-sm)", color: "var(--red)", fontSize: "13px", fontWeight: 700, cursor: "pointer" }}>✕ Failed</button>
-                            </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   ))}
@@ -1433,28 +1473,18 @@ function RiderManagerView({ branch, onLogout }) {
               );
             })()}
 
-            {/* Delivered orders — grouped by rider, always editable */}
+            {/* ── DELIVERED ── */}
             {(() => {
-              const q = updateSearch.trim().toLowerCase();
-              const filteredDelivered = q
-                ? delivered.filter(o => {
-                    const phone = String(o.phone || "").replace(/^'/, "").replace(/\s/g, "");
-                    return phone.includes(q) || (o.customerName || "").toLowerCase().includes(q);
-                  })
-                : delivered;
-              if (filteredDelivered.length === 0) return null;
-              const riderGroups = {};
-              filteredDelivered.forEach(o => {
-                const r = o.rider || "Unassigned";
-                if (!riderGroups[r]) riderGroups[r] = [];
-                riderGroups[r].push(o);
-              });
+              const riderDelivered = selectedRider ? delivered.filter(o => o.rider === selectedRider) : delivered;
+              if (riderDelivered.length === 0) return null;
+              const groups = {};
+              riderDelivered.forEach(o => { const r = o.rider || "Unassigned"; if (!groups[r]) groups[r] = []; groups[r].push(o); });
               return (
                 <>
                   <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--green)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: "12px" }}>
-                    ✓ Delivered ({filteredDelivered.length}{q && filteredDelivered.length !== delivered.length ? ` of ${delivered.length}` : ""})
+                    ✓ Delivered ({riderDelivered.length})
                   </p>
-                  {Object.entries(riderGroups).map(([rider, rOrders]) => (
+                  {Object.entries(groups).map(([rider, rOrders]) => (
                     <div key={rider} style={{ marginBottom: "20px" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px", padding: "8px 12px", background: "var(--green)", borderRadius: "var(--r-sm)" }}>
                         <RiderAvatar name={rider} size={26} />
@@ -1482,11 +1512,8 @@ function RiderManagerView({ branch, onLogout }) {
                                 <span style={{ fontFamily: "var(--display)", fontSize: "15px", fontWeight: 800, color: "var(--green)" }}>
                                   {fmt(getProducts(o).reduce((s, p) => s + (Number(p.price) || 0), 0))}
                                 </span>
-                                <button onClick={() => {
-                                  const prods = getProducts(o);
-                                  setEditDeliveredId(o.id);
-                                  setEditDeliveredForm({ products: prods.map(p => ({ ...p })) });
-                                }} style={{ padding: "5px 10px", background: "#fffbeb", border: "1.5px solid #fde68a", borderRadius: "var(--r-sm)", color: "var(--amber)", fontSize: "11px", fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
+                                <button onClick={() => { const prods = getProducts(o); setEditDeliveredId(o.id); setEditDeliveredForm({ products: prods.map(p => ({ ...p })) }); }}
+                                  style={{ padding: "5px 10px", background: "#fffbeb", border: "1.5px solid #fde68a", borderRadius: "var(--r-sm)", color: "var(--amber)", fontSize: "11px", fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
                                   ✏ Edit
                                 </button>
                               </div>
@@ -1500,20 +1527,15 @@ function RiderManagerView({ branch, onLogout }) {
               );
             })()}
 
-            {/* Failed orders */}
+            {/* ── FAILED ── */}
             {(() => {
-              const q = updateSearch.trim().toLowerCase();
-              const filteredFailed = q
-                ? failed.filter(o => {
-                    const phone = String(o.phone || "").replace(/^'/, "").replace(/\s/g, "");
-                    return phone.includes(q) || (o.customerName || "").toLowerCase().includes(q);
-                  })
-                : failed;
-              return filteredFailed.length > 0 && (
+              const riderFailed = selectedRider ? failed.filter(o => o.rider === selectedRider) : failed;
+              if (riderFailed.length === 0) return null;
+              return (
                 <>
-                  <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-faint)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: "8px" }}>✕ Failed ({filteredFailed.length}{q && filteredFailed.length !== failed.length ? ` of ${failed.length}` : ""})</p>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "8px", opacity: .5 }}>
-                    {filteredFailed.map(o => (
+                  <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-faint)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: "8px" }}>✕ Failed ({riderFailed.length})</p>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "8px", opacity: .6 }}>
+                    {riderFailed.map(o => (
                       <div key={o.id} style={{ background: "#fff", border: "1.5px solid var(--border)", borderRadius: "var(--r)", padding: "10px 14px" }}>
                         <p style={{ fontSize: "12px", fontWeight: 500, color: "var(--text-dim)" }}>{o.customerName} · {o.rider}</p>
                         <p style={{ fontSize: "11px", color: "var(--text-faint)", marginTop: "2px" }}>{getProducts(o).map(p => p.name).join(", ")}</p>
