@@ -918,6 +918,13 @@ function RiderManagerView({ branch, onLogout }) {
     if (order) sheetUpdate("Orders", { ...order, products: JSON.stringify(order.products || []) }).catch(() => {});
   }
 
+  function cancelDelivered(id) {
+    const updated = orders.map(o => String(o.id) === String(id) ? { ...o, status: "Pending" } : o);
+    setOrders(updated);
+    const order = updated.find(o => String(o.id) === String(id));
+    if (order) sheetUpdate("Orders", { ...order, products: JSON.stringify(order.products || []) }).catch(() => {});
+  }
+
   // ── Submit edit for delivered order (one-time only) ──
   function submitEditDelivered() {
     if (!editDeliveredForm) return;
@@ -1368,186 +1375,183 @@ function RiderManagerView({ branch, onLogout }) {
                 onChange={e => setSelectedRider(e.target.value)}
                 style={{ fontWeight: 600, fontSize: "15px" }}
               >
-                <option value="">— All riders —</option>
+                <option value="">— Select a rider —</option>
                 {RIDERS[branch].map(r => {
-                  const rPending   = pending.filter(o => o.rider === r).length;
-                  const rDelivered = delivered.filter(o => o.rider === r).length;
-                  const total = rPending + rDelivered + failed.filter(o => o.rider === r).length;
+                  const rP = pending.filter(o => o.rider === r).length;
+                  const rD = delivered.filter(o => o.rider === r).length;
+                  const total = rP + rD + failed.filter(o => o.rider === r).length;
                   if (total === 0) return null;
-                  return (
-                    <option key={r} value={r}>
-                      {r}{rPending > 0 ? ` — ${rPending} pending` : ""}{rDelivered > 0 ? `${rPending > 0 ? "," : " —"} ${rDelivered} delivered` : ""}
-                    </option>
-                  );
+                  return <option key={r} value={r}>{r}{rP > 0 ? " — " + rP + " pending" : ""}{rD > 0 ? (rP > 0 ? ", " : " — ") + rD + " delivered" : ""}</option>;
                 })}
               </select>
             </div>
 
-            {/* ── DUPLICATE WARNING ── */}
-            {(() => {
-              // Detect duplicates: same customerName + same phone + same date
-              const allVisible = [...pending, ...delivered, ...failed];
-              const seen = {};
-              const dupIds = new Set();
-              allVisible.forEach(o => {
-                const key = `${(o.customerName||"").trim().toLowerCase()}|${(o.phone||"").replace(/^'/,"").trim()}|${o.date}`;
-                if (seen[key]) { dupIds.add(o.id); dupIds.add(seen[key]); }
-                else seen[key] = o.id;
-              });
-              if (dupIds.size === 0) return null;
-              return (
-                <div style={{ background: "#fffbeb", border: "1.5px solid #fde68a", borderRadius: "var(--r-sm)", padding: "10px 14px", marginBottom: "12px", display: "flex", alignItems: "center", gap: "10px" }}>
-                  <span style={{ fontSize: "18px" }}>⚠️</span>
-                  <div>
-                    <p style={{ fontSize: "13px", fontWeight: 700, color: "var(--amber)" }}>{dupIds.size} possible duplicate order{dupIds.size !== 1 ? "s" : ""} detected</p>
-                    <p style={{ fontSize: "11px", color: "#92400e", marginTop: "2px" }}>Same customer name, phone and date — check before marking delivered</p>
+            {/* For wide periods require rider selection to avoid white screen */}
+            {!selectedRider && (mode === "week" || mode === "month" || mode === "range" || mode === "all") ? (
+              <div style={{ background: "var(--blue-pale)", border: "1.5px solid var(--blue-pale2)", borderRadius: "var(--r)", padding: "20px", textAlign: "center" }}>
+                <p style={{ fontSize: "14px", fontWeight: 700, color: "var(--blue)", marginBottom: "4px" }}>Select a rider above</p>
+                <p style={{ fontSize: "12px", color: "var(--text-faint)" }}>Too many orders for this period — pick a rider to see their orders</p>
+              </div>
+            ) : (
+              <>
+              {/* ── DUPLICATE WARNING ── */}
+              {(() => {
+                const allV = [...pending, ...delivered, ...failed];
+                const checkList = selectedRider ? allV.filter(o => o.rider === selectedRider) : allV;
+                const seen = {}; const dupIds = new Set();
+                checkList.forEach(o => {
+                  const key = (o.customerName||"").trim().toLowerCase() + "|" + (o.phone||"").replace(/^'/,"").trim() + "|" + o.date;
+                  if (seen[key]) { dupIds.add(o.id); dupIds.add(seen[key]); } else seen[key] = o.id;
+                });
+                if (dupIds.size === 0) return null;
+                return (
+                  <div style={{ background: "#fffbeb", border: "1.5px solid #fde68a", borderRadius: "var(--r-sm)", padding: "10px 14px", marginBottom: "12px", display: "flex", alignItems: "center", gap: "10px" }}>
+                    <span style={{ fontSize: "18px" }}>⚠️</span>
+                    <div>
+                      <p style={{ fontSize: "13px", fontWeight: 700, color: "var(--amber)" }}>{dupIds.size} possible duplicate order{dupIds.size !== 1 ? "s" : ""} detected</p>
+                      <p style={{ fontSize: "11px", color: "#92400e", marginTop: "2px" }}>Same customer name, phone and date — check before marking delivered</p>
+                    </div>
                   </div>
-                </div>
-              );
-            })()}
+                );
+              })()}
 
-            {/* ── PENDING ── */}
-            {(() => {
-              const riderPending = selectedRider ? pending.filter(o => o.rider === selectedRider) : pending;
-              if (riderPending.length === 0) return null;
-              // Detect duplicates within pending
-              const seen = {}; const dupIds = new Set();
-              riderPending.forEach(o => {
-                const key = `${(o.customerName||"").trim().toLowerCase()}|${(o.phone||"").replace(/^'/,"").trim()}|${o.date}`;
-                if (seen[key]) { dupIds.add(o.id); dupIds.add(seen[key]); }
-                else seen[key] = o.id;
-              });
-              // Group by rider
-              const groups = {};
-              riderPending.forEach(o => { const r = o.rider || "Unassigned"; if (!groups[r]) groups[r] = []; groups[r].push(o); });
-              return (
-                <>
-                  <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--amber)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: "12px" }}>
-                    ⏳ Pending ({riderPending.length})
-                  </p>
-                  {Object.entries(groups).map(([rider, rOrders]) => (
-                    <div key={rider} style={{ marginBottom: "20px" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px", padding: "8px 12px", background: "var(--navy)", borderRadius: "var(--r-sm)" }}>
-                        <RiderAvatar name={rider} size={26} />
-                        <span style={{ fontFamily: "var(--display)", fontSize: "13px", fontWeight: 700, color: "#fff" }}>{rider}</span>
-                        <span style={{ fontSize: "11px", color: "rgba(255,255,255,.45)", marginLeft: "auto" }}>{rOrders.length} order{rOrders.length !== 1 ? "s" : ""}</span>
-                      </div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                        {rOrders.map(o => {
-                          const isDup = dupIds.has(o.id);
-                          return (
-                            <div key={o.id} style={{ background: isDup ? "#fffbeb" : "#fff", border: `1.5px solid ${isDup ? "#fde68a" : "var(--border)"}`, borderRadius: "var(--r)", padding: "12px 14px", boxShadow: "var(--shadow)" }}>
-                              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "8px" }}>
-                                <div style={{ flex: 1 }}>
-                                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                                    <p style={{ fontSize: "14px", fontWeight: 700 }}>{o.customerName}</p>
-                                    {isDup && <span style={{ fontSize: "10px", fontWeight: 700, color: "var(--amber)", background: "#fde68a", padding: "1px 6px", borderRadius: "99px" }}>⚠ DUPLICATE</span>}
+              {/* ── PENDING ── */}
+              {(() => {
+                const rP = selectedRider ? pending.filter(o => o.rider === selectedRider) : pending;
+                if (rP.length === 0) return null;
+                const seen = {}; const dupIds = new Set();
+                rP.forEach(o => {
+                  const key = (o.customerName||"").trim().toLowerCase() + "|" + (o.phone||"").replace(/^'/,"").trim() + "|" + o.date;
+                  if (seen[key]) { dupIds.add(o.id); dupIds.add(seen[key]); } else seen[key] = o.id;
+                });
+                const groups = {};
+                rP.forEach(o => { const r = o.rider || "Unassigned"; if (!groups[r]) groups[r] = []; groups[r].push(o); });
+                return (
+                  <>
+                    <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--amber)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: "12px" }}>Pending ({rP.length})</p>
+                    {Object.entries(groups).map(([rider, rOrders]) => (
+                      <div key={rider} style={{ marginBottom: "20px" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px", padding: "8px 12px", background: "var(--navy)", borderRadius: "var(--r-sm)" }}>
+                          <RiderAvatar name={rider} size={26} />
+                          <span style={{ fontFamily: "var(--display)", fontSize: "13px", fontWeight: 700, color: "#fff" }}>{rider}</span>
+                          <span style={{ fontSize: "11px", color: "rgba(255,255,255,.45)", marginLeft: "auto" }}>{rOrders.length} order{rOrders.length !== 1 ? "s" : ""}</span>
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                          {rOrders.map(o => {
+                            const isDup = dupIds.has(o.id);
+                            return (
+                              <div key={o.id} style={{ background: isDup ? "#fffbeb" : "#fff", border: "1.5px solid " + (isDup ? "#fde68a" : "var(--border)"), borderRadius: "var(--r)", padding: "12px 14px", boxShadow: "var(--shadow)" }}>
+                                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "8px" }}>
+                                  <div style={{ flex: 1 }}>
+                                    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                                      <p style={{ fontSize: "14px", fontWeight: 700 }}>{o.customerName}</p>
+                                      {isDup && <span style={{ fontSize: "10px", fontWeight: 700, color: "var(--amber)", background: "#fde68a", padding: "1px 6px", borderRadius: "99px" }}>DUPLICATE</span>}
+                                    </div>
+                                    {o.phone && <a href={"tel:" + o.phone} style={{ fontSize: "13px", color: "var(--blue)", marginTop: "3px", display: "block", fontWeight: 600, textDecoration: "none" }}>{o.phone}</a>}
+                                    <p style={{ fontSize: "11px", color: "var(--text-faint)", marginTop: "3px" }}>{o.address}</p>
+                                    <p style={{ fontSize: "11px", color: "var(--text-faint)", marginTop: "2px" }}>{o.date}</p>
+                                    <div style={{ marginTop: "8px", display: "flex", flexDirection: "column", gap: "4px" }}>
+                                      {getProducts(o).map((p, i) => (
+                                        <div key={i} style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--r-sm)", padding: "6px 10px", display: "flex", justifyContent: "space-between" }}>
+                                          <span style={{ fontSize: "12px", fontWeight: 600 }}>{p.name} x{p.qty}</span>
+                                          <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--blue)" }}>{fmt(p.price)}</span>
+                                        </div>
+                                      ))}
+                                    </div>
                                   </div>
-                                  {o.phone && <a href={`tel:${o.phone}`} style={{ fontSize: "13px", color: "var(--blue)", marginTop: "3px", display: "block", fontWeight: 600, textDecoration: "none" }}>📞 {o.phone}</a>}
-                                  <p style={{ fontSize: "11px", color: "var(--text-faint)", marginTop: "3px" }}>📍 {o.address}</p>
-                                  <p style={{ fontSize: "11px", color: "var(--text-faint)", marginTop: "2px" }}>📅 {o.date}</p>
-                                  <div style={{ marginTop: "8px", display: "flex", flexDirection: "column", gap: "4px" }}>
+                                  <span style={{ fontFamily: "var(--display)", fontSize: "16px", fontWeight: 800, color: "var(--blue)", marginLeft: "12px", flexShrink: 0 }}>
+                                    {fmt(getProducts(o).reduce((s, p) => s + (Number(p.price) || 0), 0))}
+                                  </span>
+                                </div>
+                                <div style={{ display: "flex", gap: "8px", paddingTop: "12px", borderTop: "1px solid var(--border)" }}>
+                                  <button onClick={() => markDelivered(o.id)} style={{ flex: 1, padding: "13px", background: "var(--green)", border: "none", borderRadius: "var(--r-sm)", color: "#fff", fontSize: "13px", fontWeight: 700, cursor: "pointer" }}>Delivered</button>
+                                  <button onClick={() => markFailed(o.id)} style={{ flex: 1, padding: "13px", background: "#fef2f2", border: "1.5px solid #fecaca", borderRadius: "var(--r-sm)", color: "var(--red)", fontSize: "13px", fontWeight: 700, cursor: "pointer" }}>Failed</button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </>
+                );
+              })()}
+
+              {/* ── DELIVERED — cancel only, no edit ── */}
+              {(() => {
+                const rD = selectedRider ? delivered.filter(o => o.rider === selectedRider) : delivered;
+                if (rD.length === 0) return null;
+                const groups = {};
+                rD.forEach(o => { const r = o.rider || "Unassigned"; if (!groups[r]) groups[r] = []; groups[r].push(o); });
+                return (
+                  <>
+                    <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--green)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: "12px" }}>Delivered ({rD.length})</p>
+                    {Object.entries(groups).map(([rider, rOrders]) => (
+                      <div key={rider} style={{ marginBottom: "20px" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px", padding: "8px 12px", background: "var(--green)", borderRadius: "var(--r-sm)" }}>
+                          <RiderAvatar name={rider} size={26} />
+                          <span style={{ fontFamily: "var(--display)", fontSize: "13px", fontWeight: 700, color: "#fff" }}>{rider}</span>
+                          <span style={{ fontSize: "11px", color: "rgba(255,255,255,.55)", marginLeft: "auto" }}>{rOrders.length} delivered</span>
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: "8px" }}>
+                          {rOrders.map(o => (
+                            <div key={o.id} style={{ background: "#ecfdf5", border: "1.5px solid #a7f3d0", borderRadius: "var(--r)", padding: "12px 14px" }}>
+                              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
+                                <div style={{ flex: 1 }}>
+                                  <p style={{ fontSize: "13px", fontWeight: 700 }}>{o.customerName}</p>
+                                  {o.phone && <a href={"tel:" + o.phone} style={{ fontSize: "12px", color: "var(--blue)", marginTop: "2px", display: "block", fontWeight: 600, textDecoration: "none" }}>{o.phone}</a>}
+                                  <p style={{ fontSize: "11px", color: "var(--text-faint)", marginTop: "2px" }}>{o.date}</p>
+                                  <div style={{ marginTop: "6px", display: "flex", flexDirection: "column", gap: "3px" }}>
                                     {getProducts(o).map((p, i) => (
-                                      <div key={i} style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--r-sm)", padding: "6px 10px", display: "flex", justifyContent: "space-between" }}>
-                                        <span style={{ fontSize: "12px", fontWeight: 600 }}>{p.name} ×{p.qty}</span>
-                                        <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--blue)" }}>{fmt(p.price)}</span>
+                                      <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "5px 8px", background: "rgba(5,150,105,.06)", borderRadius: "var(--r-sm)" }}>
+                                        <span style={{ fontSize: "12px", fontWeight: 600 }}>{p.name} x{p.qty}</span>
+                                        <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--green)" }}>{fmt(p.price)}</span>
                                       </div>
                                     ))}
                                   </div>
                                 </div>
-                                <span style={{ fontFamily: "var(--display)", fontSize: "16px", fontWeight: 800, color: "var(--blue)", marginLeft: "12px", flexShrink: 0 }}>
-                                  {fmt(getProducts(o).reduce((s, p) => s + (Number(p.price) || 0), 0))}
-                                </span>
-                              </div>
-                              <div style={{ display: "flex", gap: "8px", paddingTop: "12px", borderTop: "1px solid var(--border)" }}>
-                                <button onClick={() => markDelivered(o.id)} style={{ flex: 1, padding: "13px", background: "var(--green)", border: "none", borderRadius: "var(--r-sm)", color: "#fff", fontSize: "13px", fontWeight: 700, cursor: "pointer" }}>✓ Delivered</button>
-                                <button onClick={() => markFailed(o.id)} style={{ flex: 1, padding: "13px", background: "#fef2f2", border: "1.5px solid #fecaca", borderRadius: "var(--r-sm)", color: "var(--red)", fontSize: "13px", fontWeight: 700, cursor: "pointer" }}>✕ Failed</button>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ))}
-                </>
-              );
-            })()}
-
-            {/* ── DELIVERED ── */}
-            {(() => {
-              const riderDelivered = selectedRider ? delivered.filter(o => o.rider === selectedRider) : delivered;
-              if (riderDelivered.length === 0) return null;
-              const groups = {};
-              riderDelivered.forEach(o => { const r = o.rider || "Unassigned"; if (!groups[r]) groups[r] = []; groups[r].push(o); });
-              return (
-                <>
-                  <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--green)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: "12px" }}>
-                    ✓ Delivered ({riderDelivered.length})
-                  </p>
-                  {Object.entries(groups).map(([rider, rOrders]) => (
-                    <div key={rider} style={{ marginBottom: "20px" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px", padding: "8px 12px", background: "var(--green)", borderRadius: "var(--r-sm)" }}>
-                        <RiderAvatar name={rider} size={26} />
-                        <span style={{ fontFamily: "var(--display)", fontSize: "13px", fontWeight: 700, color: "#fff" }}>{rider}</span>
-                        <span style={{ fontSize: "11px", color: "rgba(255,255,255,.55)", marginLeft: "auto" }}>{rOrders.length} delivered</span>
-                      </div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: "8px" }}>
-                        {rOrders.map(o => (
-                          <div key={o.id} style={{ background: "#ecfdf5", border: "1.5px solid #a7f3d0", borderRadius: "var(--r)", padding: "12px 14px" }}>
-                            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
-                              <div style={{ flex: 1 }}>
-                                <p style={{ fontSize: "13px", fontWeight: 700 }}>{o.customerName}</p>
-                                {o.phone && <a href={`tel:${o.phone}`} style={{ fontSize: "12px", color: "var(--blue)", marginTop: "2px", display: "block", fontWeight: 600, textDecoration: "none" }}>📞 {o.phone}</a>}
-                                <p style={{ fontSize: "11px", color: "var(--text-faint)", marginTop: "2px" }}>📅 {o.date}</p>
-                                <div style={{ marginTop: "6px", display: "flex", flexDirection: "column", gap: "3px" }}>
-                                  {getProducts(o).map((p, i) => (
-                                    <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "5px 8px", background: "rgba(5,150,105,.06)", borderRadius: "var(--r-sm)" }}>
-                                      <span style={{ fontSize: "12px", fontWeight: 600 }}>{p.name} ×{p.qty}</span>
-                                      <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--green)" }}>{fmt(p.price)}</span>
-                                    </div>
-                                  ))}
+                                <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "6px", marginLeft: "12px", flexShrink: 0 }}>
+                                  <span style={{ fontFamily: "var(--display)", fontSize: "15px", fontWeight: 800, color: "var(--green)" }}>
+                                    {fmt(getProducts(o).reduce((s, p) => s + (Number(p.price) || 0), 0))}
+                                  </span>
+                                  <button onClick={() => cancelDelivered(o.id)}
+                                    style={{ padding: "5px 10px", background: "#fef2f2", border: "1.5px solid #fecaca", borderRadius: "var(--r-sm)", color: "var(--red)", fontSize: "11px", fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
+                                    Cancel Delivery
+                                  </button>
                                 </div>
                               </div>
-                              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "6px", marginLeft: "12px", flexShrink: 0 }}>
-                                <span style={{ fontFamily: "var(--display)", fontSize: "15px", fontWeight: 800, color: "var(--green)" }}>
-                                  {fmt(getProducts(o).reduce((s, p) => s + (Number(p.price) || 0), 0))}
-                                </span>
-                                <button onClick={() => { const prods = getProducts(o); setEditDeliveredId(o.id); setEditDeliveredForm({ products: prods.map(p => ({ ...p })) }); }}
-                                  style={{ padding: "5px 10px", background: "#fffbeb", border: "1.5px solid #fde68a", borderRadius: "var(--r-sm)", color: "var(--amber)", fontSize: "11px", fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
-                                  ✏ Edit
-                                </button>
-                              </div>
                             </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </>
-              );
-            })()}
-
-            {/* ── FAILED ── */}
-            {(() => {
-              const riderFailed = selectedRider ? failed.filter(o => o.rider === selectedRider) : failed;
-              if (riderFailed.length === 0) return null;
-              return (
-                <>
-                  <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-faint)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: "8px" }}>✕ Failed ({riderFailed.length})</p>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "8px", opacity: .6 }}>
-                    {riderFailed.map(o => (
-                      <div key={o.id} style={{ background: "#fff", border: "1.5px solid var(--border)", borderRadius: "var(--r)", padding: "10px 14px" }}>
-                        <p style={{ fontSize: "12px", fontWeight: 500, color: "var(--text-dim)" }}>{o.customerName} · {o.rider}</p>
-                        <p style={{ fontSize: "11px", color: "var(--text-faint)", marginTop: "2px" }}>{getProducts(o).map(p => p.name).join(", ")}</p>
+                          ))}
+                        </div>
                       </div>
                     ))}
-                  </div>
-                </>
-              );
-            })()}
+                  </>
+                );
+              })()}
 
-            {pending.length === 0 && delivered.length === 0 && failed.length === 0 && (
-              <p style={{ textAlign: "center", padding: "48px 0", fontSize: "13px", color: "var(--text-faint)" }}>No orders in this period</p>
+              {/* ── FAILED ── */}
+              {(() => {
+                const rF = selectedRider ? failed.filter(o => o.rider === selectedRider) : failed;
+                if (rF.length === 0) return null;
+                return (
+                  <>
+                    <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-faint)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: "8px" }}>Failed ({rF.length})</p>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "8px", opacity: .6 }}>
+                      {rF.map(o => (
+                        <div key={o.id} style={{ background: "#fff", border: "1.5px solid var(--border)", borderRadius: "var(--r)", padding: "10px 14px" }}>
+                          <p style={{ fontSize: "12px", fontWeight: 500, color: "var(--text-dim)" }}>{o.customerName} · {o.rider}</p>
+                          <p style={{ fontSize: "11px", color: "var(--text-faint)", marginTop: "2px" }}>{getProducts(o).map(p => p.name).join(", ")}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                );
+              })()}
+
+              {pending.length === 0 && delivered.length === 0 && failed.length === 0 && (
+                <p style={{ textAlign: "center", padding: "48px 0", fontSize: "13px", color: "var(--text-faint)" }}>No orders in this period</p>
+              )}
+              </>
             )}
           </div>
         )}
@@ -1628,7 +1632,7 @@ function ManagerView({ branch, onLogout }) {
 
   const [remitSaved, setRemitSaved] = useState(false);
   const blankExp   = { date: TODAY, description: "", category: "Fuel", amount: "" };
-  const blankRemit = { date: TODAY, remittedAmount: "", txID: "", note: "" };
+  const blankRemit = { date: TODAY, remittedAmount: "", txID: "", bankName: "", accountName: "", note: "" };
   const [expForm, setExpForm]     = useState(blankExp);
   const [remitForm, setRemitForm] = useState(blankRemit);
   // payment input per rider
@@ -1933,6 +1937,8 @@ function ManagerView({ branch, onLogout }) {
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "12px" }}>
                 <div><label className="k-label">Date</label><input type="date" className="k-input" value={remitForm.date} onChange={e => setRemitForm(p => ({ ...p, date: e.target.value }))} /></div>
                 <div><label className="k-label">Amount Sent (₦)</label><input type="number" className="k-input" placeholder="0" value={remitForm.remittedAmount} onChange={e => setRemitForm(p => ({ ...p, remittedAmount: e.target.value }))} /></div>
+                <div><label className="k-label">Bank Name</label><input className="k-input" placeholder="e.g. GTBank, Opay..." value={remitForm.bankName || ""} onChange={e => setRemitForm(p => ({ ...p, bankName: e.target.value }))} /></div>
+                <div><label className="k-label">Account Name</label><input className="k-input" placeholder="Account name" value={remitForm.accountName || ""} onChange={e => setRemitForm(p => ({ ...p, accountName: e.target.value }))} /></div>
                 <div style={{ gridColumn: "1/-1" }}><label className="k-label">Transaction ID</label><input className="k-input" style={{ fontFamily: "monospace" }} placeholder="TRF20260305ABCD" value={remitForm.txID} onChange={e => setRemitForm(p => ({ ...p, txID: e.target.value }))} /></div>
                 <div style={{ gridColumn: "1/-1" }}><label className="k-label">Note (optional)</label><input className="k-input" placeholder="Any remarks..." value={remitForm.note} onChange={e => setRemitForm(p => ({ ...p, note: e.target.value }))} /></div>
               </div>
