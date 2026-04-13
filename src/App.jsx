@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
 const BRANCHES = ["AJA", "IDIMU", "KETU"];
@@ -811,10 +811,6 @@ function RiderManagerView({ branch, onLogout }) {
   const [phoneSearch, setPhoneSearch] = useState("");
   const [phoneSearchD, setPhoneSearchD] = useState("");
   const [expandedOrderId, setExpandedOrderId] = useState(null);
-  const [assignMode, setAssignMode] = useState("today");
-  const [assignShowMore, setAssignShowMore] = useState(50);
-  const [assignCustomDate, setAssignCustomDate] = useState("");
-  const [assignCustomDateEnd, setAssignCustomDateEnd] = useState("");
   const [updateSearch, setUpdateSearch] = useState("");
   const [selectedRider, setSelectedRider] = useState("");
   // ── Edit delivered state ──
@@ -841,18 +837,6 @@ function RiderManagerView({ branch, onLogout }) {
     const t = setTimeout(() => setPhoneSearchD(phoneSearch), 300);
     return () => clearTimeout(t);
   }, [phoneSearch]);
-
-  // Memoize search results — only recalculates when unassigned list or search query changes
-  const searchList = useMemo(() => {
-    if (!phoneSearchD.trim()) return unassigned;
-    const q = phoneSearchD.trim().toLowerCase();
-    return unassigned.filter(o => {
-      const phone = String(o.phone || "").replace(/^'/, "").replace(/\s/g, "");
-      return phone.includes(q)
-        || (o.customerName || "").toLowerCase().includes(q)
-        || (o.address || "").toLowerCase().includes(q);
-    });
-  }, [unassigned, phoneSearchD]);
 
   function addProduct() {
     setForm(f => ({ ...f, products: [...f.products, { ...blankProduct }] }));
@@ -967,24 +951,13 @@ function RiderManagerView({ branch, onLogout }) {
     sheetAdd("RoadExpenses", re).catch(() => {});
   }
 
-  const YESTERDAY = useMemo(() => {
-    const d = new Date(); d.setDate(d.getDate() - 1);
-    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
-  }, []);
-  const allUnassigned = useMemo(() => orders.filter(o => o.status === "Unassigned"), [orders]);
-  const unassigned = useMemo(() => {
-    if (assignMode === "today")     return allUnassigned.filter(o => o.date === TODAY);
-    if (assignMode === "yesterday") return allUnassigned.filter(o => o.date === YESTERDAY);
-    if (assignMode === "month")     return allUnassigned.filter(o => o.date.startsWith(TODAY.slice(0,7)));
-    if (assignMode === "range" && assignCustomDate && assignCustomDateEnd)
-      return allUnassigned.filter(o => o.date >= assignCustomDate && o.date <= assignCustomDateEnd);
-    return allUnassigned;
-  }, [allUnassigned, assignMode, assignCustomDate, assignCustomDateEnd, YESTERDAY]);
-  const filtered   = useMemo(() => filterByPeriod(orders, mode, customDate, customDateEnd), [orders, mode, customDate, customDateEnd]);
-  const pending    = useMemo(() => filtered.filter(o => o.status === "Pending"),   [filtered]);
-  const delivered  = useMemo(() => filtered.filter(o => o.status === "Delivered"), [filtered]);
-  const failed     = useMemo(() => filtered.filter(o => o.status === "Failed"),    [filtered]);
-  const period     = useMemo(() => getBonusPeriod(), []);
+  const todayOrders  = filterByPeriod(orders, "today", "");
+  const unassigned   = todayOrders.filter(o => o.status === "Unassigned");
+  const filtered     = filterByPeriod(orders, mode, customDate, customDateEnd);
+  const pending      = filtered.filter(o => o.status === "Pending");
+  const delivered    = filtered.filter(o => o.status === "Delivered");
+  const failed       = filtered.filter(o => o.status === "Failed");
+  const period       = getBonusPeriod();
 
   const TABS = [
     { id: "log",    label: "Log Orders" },
@@ -1126,115 +1099,87 @@ function RiderManagerView({ branch, onLogout }) {
         {tab === "assign" && (
           <div className="fade-in">
             <SectionTitle title="Assign Orders" sub="Tap an order to expand and assign a rider" />
-
-            {/* Date filter */}
-            <div style={{ marginBottom: "12px" }}>
-              <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginBottom: assignMode === "range" ? "8px" : "0" }}>
-                {[["today","Today"],["yesterday","Yesterday"],["month","Month"],["range","Range"],["all","All"]].map(([id, lbl]) => (
-                  <button key={id} onClick={() => { setAssignMode(id); setPhoneSearch(""); setExpandedOrderId(null); setAssignShowMore(50); }} style={{
-                    padding: "6px 14px", borderRadius: "99px", fontSize: "12px", fontWeight: 600, cursor: "pointer", minHeight: "36px",
-                    border: `1.5px solid ${assignMode === id ? "var(--blue)" : "var(--border)"}`,
-                    background: assignMode === id ? "var(--blue)" : "#fff",
-                    color: assignMode === id ? "#fff" : "var(--text-dim)",
-                  }}>{lbl}</button>
-                ))}
-              </div>
-              {assignMode === "range" && (
-                <div style={{ display: "flex", alignItems: "center", gap: "8px", background: "var(--blue-pale)", border: "1.5px solid var(--blue-pale2)", borderRadius: "var(--r-sm)", padding: "8px 12px", marginTop: "8px" }}>
-                  <span style={{ fontSize: "11px", color: "var(--text-dim)", fontWeight: 600, whiteSpace: "nowrap" }}>From</span>
-                  <input type="date" value={assignCustomDate} onChange={e => setAssignCustomDate(e.target.value)} className="k-input" style={{ flex: 1, fontSize: "13px", padding: "6px 8px" }}/>
-                  <span style={{ fontSize: "11px", color: "var(--text-dim)", fontWeight: 600, whiteSpace: "nowrap" }}>To</span>
-                  <input type="date" value={assignCustomDateEnd} onChange={e => setAssignCustomDateEnd(e.target.value)} className="k-input" style={{ flex: 1, fontSize: "13px", padding: "6px 8px" }}/>
-                </div>
-              )}
-            </div>
-
             {unassigned.length === 0 ? (
               <div style={{ background: "#ecfdf5", border: "1.5px solid #a7f3d0", borderRadius: "var(--r)", padding: "20px", textAlign: "center" }}>
                 <p style={{ fontSize: "14px", fontWeight: 600, color: "var(--green)" }}>All orders assigned</p>
-                <p style={{ fontSize: "12px", color: "var(--text-faint)", marginTop: "4px" }}>No unassigned orders for this period</p>
+                <p style={{ fontSize: "12px", color: "var(--text-faint)", marginTop: "4px" }}>No unassigned orders for today</p>
               </div>
             ) : (
               <>
                 <div style={{ background: "var(--navy)", borderRadius: "var(--r-sm)", padding: "10px 14px", marginBottom: "12px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <span style={{ fontSize: "13px", fontWeight: 700, color: "#fff" }}>{unassigned.length} unassigned orders</span>
-                  <Tag label={assignMode === "today" ? "Today" : assignMode === "yesterday" ? "Yesterday" : "All"} type="navy" />
+                  <Tag label="Today" type="navy" />
                 </div>
                 <input
                   className="k-input"
                   placeholder="Search by name, phone or address..."
                   value={phoneSearch}
-                  onChange={e => { setPhoneSearch(e.target.value); setExpandedOrderId(null); setAssignShowMore(50); }}
+                  onChange={e => { setPhoneSearch(e.target.value); setExpandedOrderId(null); }}
                   style={{ marginBottom: "8px" }}
                   autoComplete="off"
                 />
                 {(() => {
-                  // searchList is memoized at component level — no recompute on render
-                  if (searchList.length === 0) return (
+                  const list = phoneSearchD.trim()
+                    ? unassigned.filter(o => {
+                        const q = phoneSearchD.trim().toLowerCase();
+                        const phone = String(o.phone || "").replace(/^'/, "").replace(/\s/g, "");
+                        return phone.includes(q)
+                          || (o.customerName || "").toLowerCase().includes(q)
+                          || (o.address || "").toLowerCase().includes(q);
+                      })
+                    : unassigned;
+                  if (list.length === 0) return (
                     <p style={{ textAlign: "center", padding: "32px 0", fontSize: "13px", color: "var(--text-faint)" }}>No matches found</p>
                   );
-
-                  const visible = searchList.slice(0, assignShowMore);
-
                   return (
-                    <>
-                      {phoneSearchD.trim() && (
-                        <p style={{ fontSize: "11px", color: "var(--text-faint)", marginBottom: "8px" }}>{searchList.length} match{searchList.length !== 1 ? "es" : ""}</p>
-                      )}
-                      <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                        {visible.map(o => {
-                          const isExpanded = expandedOrderId === o.id;
-                          const selectedR  = assignRider[o.id] || "";
-                          const prods      = getProducts(o);
-                          const total      = prods.reduce((s, p) => s + (Number(p.price) || 0), 0);
-                          return (
-                            <div key={o.id} style={{ background: "#fff", border: "1.5px solid " + (isExpanded ? "var(--blue)" : "var(--border)"), borderRadius: "var(--r-sm)", overflow: "hidden" }}>
-                              <div onClick={() => setExpandedOrderId(isExpanded ? null : o.id)} style={{ padding: "10px 12px", display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", gap: "8px" }}>
-                                <div style={{ flex: 1, minWidth: 0 }}>
-                                  <p style={{ fontSize: "13px", fontWeight: 700, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{o.customerName}</p>
-                                  <p style={{ fontSize: "11px", color: "var(--text-faint)", marginTop: "1px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                                    {o.phone ? o.phone + " · " : ""}{o.address}
-                                  </p>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                      {list.map(o => {
+                        const isExpanded = expandedOrderId === o.id;
+                        const selectedR  = assignRider[o.id] || "";
+                        const prods      = getProducts(o);
+                        const total      = prods.reduce((s, p) => s + (Number(p.price) || 0), 0);
+                        return (
+                          <div key={o.id} style={{ background: "#fff", border: "1.5px solid " + (isExpanded ? "var(--blue)" : "var(--border)"), borderRadius: "var(--r-sm)", overflow: "hidden" }}>
+                            <div onClick={() => setExpandedOrderId(isExpanded ? null : o.id)} style={{ padding: "10px 12px", display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", gap: "8px" }}>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <p style={{ fontSize: "13px", fontWeight: 700, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{o.customerName}</p>
+                                <p style={{ fontSize: "11px", color: "var(--text-faint)", marginTop: "1px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                  {o.phone ? o.phone + " · " : ""}{o.address}
+                                </p>
+                              </div>
+                              <div style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
+                                <span style={{ fontFamily: "var(--display)", fontSize: "13px", fontWeight: 800, color: "var(--blue)" }}>{fmt(total)}</span>
+                                <span style={{ fontSize: "11px", color: isExpanded ? "var(--blue)" : "var(--text-faint)", fontWeight: 700 }}>{isExpanded ? "▲" : "▼"}</span>
+                              </div>
+                            </div>
+                            {isExpanded && (
+                              <div style={{ borderTop: "1px solid var(--border)", padding: "10px 12px", background: "var(--surface2)" }}>
+                                <div style={{ marginBottom: "10px" }}>
+                                  {prods.map((p, i) => (
+                                    <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", borderBottom: i < prods.length - 1 ? "1px solid var(--border)" : "none" }}>
+                                      <span style={{ fontSize: "12px", color: "var(--text-dim)" }}>{p.name} x{p.qty}</span>
+                                      <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--blue)" }}>{fmt(p.price)}</span>
+                                    </div>
+                                  ))}
                                 </div>
-                                <div style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
-                                  <span style={{ fontFamily: "var(--display)", fontSize: "13px", fontWeight: 800, color: "var(--blue)" }}>{fmt(total)}</span>
-                                  <span style={{ fontSize: "11px", color: isExpanded ? "var(--blue)" : "var(--text-faint)", fontWeight: 700 }}>{isExpanded ? "▲" : "▼"}</span>
+                                <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                                  <select value={selectedR} onChange={e => setAssignRider(p => ({ ...p, [o.id]: e.target.value }))} className="k-input" style={{ flex: 1, fontWeight: 600 }} onClick={e => e.stopPropagation()}>
+                                    <option value="">Select rider...</option>
+                                    {RIDERS[branch].map(r => <option key={r} value={r}>{r}</option>)}
+                                  </select>
+                                  <button
+                                    onClick={e => { e.stopPropagation(); assignOrder(o.id); setExpandedOrderId(null); }}
+                                    disabled={!selectedR}
+                                    style={{ padding: "10px 16px", flexShrink: 0, background: !selectedR ? "#f1f5f9" : "var(--green)", border: "none", borderRadius: "var(--r-sm)", color: !selectedR ? "#94a3b8" : "#fff", fontFamily: "var(--display)", fontSize: "13px", fontWeight: 700, cursor: !selectedR ? "not-allowed" : "pointer", whiteSpace: "nowrap" }}>
+                                    Assign
+                                  </button>
                                 </div>
                               </div>
-                              {isExpanded && (
-                                <div style={{ borderTop: "1px solid var(--border)", padding: "10px 12px", background: "var(--surface2)" }}>
-                                  <div style={{ marginBottom: "10px" }}>
-                                    {prods.map((p, i) => (
-                                      <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", borderBottom: i < prods.length - 1 ? "1px solid var(--border)" : "none" }}>
-                                        <span style={{ fontSize: "12px", color: "var(--text-dim)" }}>{p.name} ×{p.qty}</span>
-                                        <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--blue)" }}>{fmt(p.price)}</span>
-                                      </div>
-                                    ))}
-                                  </div>
-                                  <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                                    <select value={selectedR} onChange={e => setAssignRider(p => ({ ...p, [o.id]: e.target.value }))} className="k-input" style={{ flex: 1, fontWeight: 600 }} onClick={e => e.stopPropagation()}>
-                                      <option value="">Select rider...</option>
-                                      {RIDERS[branch].map(r => <option key={r} value={r}>{r}</option>)}
-                                    </select>
-                                    <button
-                                      onClick={e => { e.stopPropagation(); assignOrder(o.id); setExpandedOrderId(null); }}
-                                      disabled={!selectedR}
-                                      style={{ padding: "10px 16px", flexShrink: 0, background: !selectedR ? "#f1f5f9" : "var(--green)", border: "none", borderRadius: "var(--r-sm)", color: !selectedR ? "#94a3b8" : "#fff", fontFamily: "var(--display)", fontSize: "13px", fontWeight: 700, cursor: !selectedR ? "not-allowed" : "pointer", whiteSpace: "nowrap" }}>
-                                      Assign
-                                    </button>
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                      {searchList.length > assignShowMore && (
-                        <button onClick={() => setAssignShowMore(n => n + 50)} style={{ width: "100%", marginTop: "10px", padding: "12px", background: "var(--blue-pale)", border: "1.5px solid var(--blue-pale2)", borderRadius: "var(--r-sm)", color: "var(--blue)", fontSize: "13px", fontWeight: 700, cursor: "pointer" }}>
-                          Show more ({searchList.length - assignShowMore} remaining)
-                        </button>
-                      )}
-                    </>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
                   );
                 })()}
               </>
@@ -1318,14 +1263,14 @@ function RiderManagerView({ branch, onLogout }) {
         {/* ── UPDATE ORDERS TAB ── */}
         {tab === "update" && (
           <div className="fade-in">
-            <SectionTitle title="Update Orders" sub="Select a rider to see and update their orders" />
+            <SectionTitle title="Update Orders" sub="Mark delivered or failed, add road expenses" />
             <PeriodFilter mode={mode} setMode={setMode} customDate={customDate} setCustomDate={setCustomDate} customDateEnd={customDateEnd} setCustomDateEnd={setCustomDateEnd} />
 
             {/* Road expense section */}
             <Card accent="blue" style={{ marginBottom: "16px" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
                 <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--blue)", textTransform: "uppercase", letterSpacing: ".04em" }}>Road Expense per Rider</p>
-                {roadSaved && <Tag label="Saved" type="green" />}
+                {roadSaved && <Tag label="✓ Saved" type="green" />}
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginBottom: "10px" }}>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
@@ -1359,14 +1304,14 @@ function RiderManagerView({ branch, onLogout }) {
                   {Object.values(roadExpenses).filter(r => r.date === TODAY).map(r => (
                     <div key={r.id} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", fontSize: "12px" }}>
                       <span style={{ color: "var(--text-dim)", fontWeight: 500 }}>{r.rider}</span>
-                      <span style={{ color: "var(--red)", fontWeight: 600 }}>{fmt(r.amount)}{r.note ? " · " + r.note : ""}</span>
+                      <span style={{ color: "var(--red)", fontWeight: 600 }}>{fmt(r.amount)} {r.note ? `· ${r.note}` : ""}</span>
                     </div>
                   ))}
                 </div>
               )}
             </Card>
 
-            {/* Mark delivered modal */}
+            {/* Edit modal */}
             {editingId && editForm && (
               <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", padding: "16px" }}>
                 <div className="slide-down" style={{ background: "#fff", borderRadius: "var(--r-lg)", padding: "24px", width: "100%", maxWidth: "500px", maxHeight: "90vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,.3)" }}>
@@ -1405,191 +1350,212 @@ function RiderManagerView({ branch, onLogout }) {
                   ))}
                   <div style={{ background: "var(--blue-pale)", border: "1.5px solid var(--blue-pale2)", borderRadius: "var(--r-sm)", padding: "10px 14px", marginBottom: "14px", display: "flex", justifyContent: "space-between" }}>
                     <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-dim)" }}>Total</span>
-                    <span style={{ fontFamily: "var(--display)", fontSize: "14px", fontWeight: 800, color: "var(--blue)" }}>{fmt(editForm.products.reduce((s, p) => s + (Number(p.price) || 0), 0))}</span>
+                    <span style={{ fontFamily: "var(--display)", fontSize: "14px", fontWeight: 800, color: "var(--blue)" }}>
+                      {fmt(editForm.products.reduce((s, p) => s + (Number(p.price) || 0), 0))}
+                    </span>
                   </div>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginBottom: "12px" }}>
                     <div><label className="k-label">Road Expense (₦)</label><input type="number" className="k-input" placeholder="0" value={editForm.roadExpense} onChange={e => setEditForm(f => ({ ...f, roadExpense: e.target.value }))}/></div>
                     <div><label className="k-label">Expense Note</label><input className="k-input" placeholder="Fuel, toll..." value={editForm.expenseNote} onChange={e => setEditForm(f => ({ ...f, expenseNote: e.target.value }))}/></div>
                   </div>
                   <div style={{ display: "flex", gap: "8px" }}>
-                    <button onClick={submitDelivered} style={{ flex: 1, padding: "10px", background: "var(--green)", border: "none", borderRadius: "var(--r-sm)", color: "#fff", fontFamily: "var(--display)", fontSize: "13px", fontWeight: 700, cursor: "pointer" }}>Confirm Delivered</button>
+                    <button onClick={submitDelivered} style={{ flex: 1, padding: "10px", background: "var(--green)", border: "none", borderRadius: "var(--r-sm)", color: "#fff", fontFamily: "var(--display)", fontSize: "13px", fontWeight: 700, cursor: "pointer" }}>✓ Confirm Delivered</button>
                     <button onClick={() => { setEditingId(null); setEditForm(null); }} style={{ padding: "10px 16px", background: "#fff", border: "1.5px solid var(--border)", borderRadius: "var(--r-sm)", color: "var(--text-dim)", fontSize: "12px", cursor: "pointer" }}>Cancel</button>
                   </div>
                 </div>
               </div>
             )}
 
-            {/* Rider dropdown */}
+            {/* ── RIDER FILTER DROPDOWN ── */}
             <div style={{ marginBottom: "12px" }}>
               <label className="k-label">Filter by Rider</label>
-              <select className="k-input" value={selectedRider} onChange={e => setSelectedRider(e.target.value)} style={{ fontWeight: 600, fontSize: "15px" }}>
-                <option value="">All riders</option>
-                {RIDERS[branch].filter(r => {
-                  const tot = pending.filter(o => o.rider === r).length + delivered.filter(o => o.rider === r).length + failed.filter(o => o.rider === r).length;
-                  return tot > 0;
-                }).map(r => {
-                  const np = pending.filter(o => o.rider === r).length;
-                  const nd = delivered.filter(o => o.rider === r).length;
-                  return <option key={r} value={r}>{r}{np > 0 ? " — " + np + " pending" : ""}{nd > 0 ? (np > 0 ? ", " : " — ") + nd + " delivered" : ""}</option>;
+              <select
+                className="k-input"
+                value={selectedRider}
+                onChange={e => setSelectedRider(e.target.value)}
+                style={{ fontWeight: 600, fontSize: "15px" }}
+              >
+                <option value="">— Select a rider —</option>
+                {RIDERS[branch].map(r => {
+                  const rP = pending.filter(o => o.rider === r).length;
+                  const rD = delivered.filter(o => o.rider === r).length;
+                  const total = rP + rD + failed.filter(o => o.rider === r).length;
+                  if (total === 0) return null;
+                  return <option key={r} value={r}>{r}{rP > 0 ? " — " + rP + " pending" : ""}{rD > 0 ? (rP > 0 ? ", " : " — ") + rD + " delivered" : ""}</option>;
                 })}
               </select>
             </div>
 
-            {/* Wide period guard */}
+            {/* For wide periods require rider selection to avoid white screen */}
             {!selectedRider && (mode === "week" || mode === "month" || mode === "range" || mode === "all") ? (
               <div style={{ background: "var(--blue-pale)", border: "1.5px solid var(--blue-pale2)", borderRadius: "var(--r)", padding: "20px", textAlign: "center" }}>
                 <p style={{ fontSize: "14px", fontWeight: 700, color: "var(--blue)", marginBottom: "4px" }}>Select a rider above</p>
-                <p style={{ fontSize: "12px", color: "var(--text-faint)" }}>Too many orders — pick a rider to see their orders for this period</p>
+                <p style={{ fontSize: "12px", color: "var(--text-faint)" }}>Too many orders for this period — pick a rider to see their orders</p>
               </div>
-            ) : (() => {
-              const visPending   = (selectedRider ? pending.filter(o => o.rider === selectedRider)   : pending).slice(0, 50);
-              const visDelivered = (selectedRider ? delivered.filter(o => o.rider === selectedRider) : delivered).slice(0, 50);
-              const visFailed    = (selectedRider ? failed.filter(o => o.rider === selectedRider)    : failed).slice(0, 50);
-
-              // Duplicate detection across all visible
-              const dupCheck = [...visPending, ...visDelivered, ...visFailed];
-              const dupSeen = {}; const dupIds = new Set();
-              dupCheck.forEach(o => {
-                const k = (o.customerName||"").trim().toLowerCase() + "|" + (o.phone||"").replace(/^'/,"").trim() + "|" + o.date;
-                if (dupSeen[k]) { dupIds.add(o.id); dupIds.add(dupSeen[k]); } else dupSeen[k] = o.id;
-              });
-
-              return (
-                <>
-                  {dupIds.size > 0 && (
-                    <div style={{ background: "#fffbeb", border: "1.5px solid #fde68a", borderRadius: "var(--r-sm)", padding: "10px 14px", marginBottom: "12px", display: "flex", alignItems: "center", gap: "10px" }}>
-                      <span style={{ fontSize: "18px" }}>⚠️</span>
-                      <div>
-                        <p style={{ fontSize: "13px", fontWeight: 700, color: "var(--amber)" }}>{dupIds.size} possible duplicate order{dupIds.size !== 1 ? "s" : ""}</p>
-                        <p style={{ fontSize: "11px", color: "#92400e", marginTop: "2px" }}>Same customer, phone and date — check before marking delivered</p>
-                      </div>
+            ) : (
+              <>
+              {/* ── DUPLICATE WARNING ── */}
+              {(() => {
+                const allV = [...pending, ...delivered, ...failed];
+                const checkList = selectedRider ? allV.filter(o => o.rider === selectedRider) : allV;
+                const seen = {}; const dupIds = new Set();
+                checkList.forEach(o => {
+                  const key = (o.customerName||"").trim().toLowerCase() + "|" + (o.phone||"").replace(/^'/,"").trim() + "|" + o.date;
+                  if (seen[key]) { dupIds.add(o.id); dupIds.add(seen[key]); } else seen[key] = o.id;
+                });
+                if (dupIds.size === 0) return null;
+                return (
+                  <div style={{ background: "#fffbeb", border: "1.5px solid #fde68a", borderRadius: "var(--r-sm)", padding: "10px 14px", marginBottom: "12px", display: "flex", alignItems: "center", gap: "10px" }}>
+                    <span style={{ fontSize: "18px" }}>⚠️</span>
+                    <div>
+                      <p style={{ fontSize: "13px", fontWeight: 700, color: "var(--amber)" }}>{dupIds.size} possible duplicate order{dupIds.size !== 1 ? "s" : ""} detected</p>
+                      <p style={{ fontSize: "11px", color: "#92400e", marginTop: "2px" }}>Same customer name, phone and date — check before marking delivered</p>
                     </div>
-                  )}
+                  </div>
+                );
+              })()}
 
-                  {/* PENDING */}
-                  {visPending.length > 0 && (() => {
-                    const pGroups = {};
-                    visPending.forEach(o => { const r = o.rider||"Unassigned"; if (!pGroups[r]) pGroups[r]=[]; pGroups[r].push(o); });
-                    return (
-                      <>
-                        <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--amber)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: "12px" }}>Pending ({visPending.length})</p>
-                        {Object.entries(pGroups).map(([rider, orders]) => (
-                          <div key={rider} style={{ marginBottom: "20px" }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px", padding: "8px 12px", background: "var(--navy)", borderRadius: "var(--r-sm)" }}>
-                              <RiderAvatar name={rider} size={26} />
-                              <span style={{ fontFamily: "var(--display)", fontSize: "13px", fontWeight: 700, color: "#fff" }}>{rider}</span>
-                              <span style={{ fontSize: "11px", color: "rgba(255,255,255,.45)", marginLeft: "auto" }}>{orders.length} order{orders.length !== 1 ? "s" : ""}</span>
-                            </div>
-                            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                              {orders.map(o => (
-                                <div key={o.id} style={{ background: dupIds.has(o.id) ? "#fffbeb" : "#fff", border: "1.5px solid " + (dupIds.has(o.id) ? "#fde68a" : "var(--border)"), borderRadius: "var(--r)", padding: "12px 14px", boxShadow: "var(--shadow)" }}>
-                                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "8px" }}>
-                                    <div style={{ flex: 1 }}>
-                                      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                                        <p style={{ fontSize: "14px", fontWeight: 700 }}>{o.customerName}</p>
-                                        {dupIds.has(o.id) && <span style={{ fontSize: "10px", fontWeight: 700, color: "var(--amber)", background: "#fde68a", padding: "1px 6px", borderRadius: "99px" }}>DUPLICATE</span>}
-                                      </div>
-                                      {o.phone && <a href={"tel:" + o.phone} style={{ fontSize: "13px", color: "var(--blue)", marginTop: "3px", display: "block", fontWeight: 600, textDecoration: "none" }}>{o.phone}</a>}
-                                      <p style={{ fontSize: "11px", color: "var(--text-faint)", marginTop: "3px" }}>{o.address}</p>
-                                      <p style={{ fontSize: "11px", color: "var(--text-faint)", marginTop: "2px" }}>{o.date}</p>
-                                      <div style={{ marginTop: "8px", display: "flex", flexDirection: "column", gap: "4px" }}>
-                                        {getProducts(o).map((p, i) => (
-                                          <div key={i} style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--r-sm)", padding: "6px 10px", display: "flex", justifyContent: "space-between" }}>
-                                            <span style={{ fontSize: "12px", fontWeight: 600 }}>{p.name} x{p.qty}</span>
-                                            <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--blue)" }}>{fmt(p.price)}</span>
-                                          </div>
-                                        ))}
-                                      </div>
+              {/* ── PENDING ── */}
+              {(() => {
+                const rP = selectedRider ? pending.filter(o => o.rider === selectedRider) : pending;
+                if (rP.length === 0) return null;
+                const seen = {}; const dupIds = new Set();
+                rP.forEach(o => {
+                  const key = (o.customerName||"").trim().toLowerCase() + "|" + (o.phone||"").replace(/^'/,"").trim() + "|" + o.date;
+                  if (seen[key]) { dupIds.add(o.id); dupIds.add(seen[key]); } else seen[key] = o.id;
+                });
+                const groups = {};
+                rP.forEach(o => { const r = o.rider || "Unassigned"; if (!groups[r]) groups[r] = []; groups[r].push(o); });
+                return (
+                  <>
+                    <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--amber)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: "12px" }}>Pending ({rP.length})</p>
+                    {Object.entries(groups).map(([rider, rOrders]) => (
+                      <div key={rider} style={{ marginBottom: "20px" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px", padding: "8px 12px", background: "var(--navy)", borderRadius: "var(--r-sm)" }}>
+                          <RiderAvatar name={rider} size={26} />
+                          <span style={{ fontFamily: "var(--display)", fontSize: "13px", fontWeight: 700, color: "#fff" }}>{rider}</span>
+                          <span style={{ fontSize: "11px", color: "rgba(255,255,255,.45)", marginLeft: "auto" }}>{rOrders.length} order{rOrders.length !== 1 ? "s" : ""}</span>
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                          {rOrders.map(o => {
+                            const isDup = dupIds.has(o.id);
+                            return (
+                              <div key={o.id} style={{ background: isDup ? "#fffbeb" : "#fff", border: "1.5px solid " + (isDup ? "#fde68a" : "var(--border)"), borderRadius: "var(--r)", padding: "12px 14px", boxShadow: "var(--shadow)" }}>
+                                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "8px" }}>
+                                  <div style={{ flex: 1 }}>
+                                    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                                      <p style={{ fontSize: "14px", fontWeight: 700 }}>{o.customerName}</p>
+                                      {isDup && <span style={{ fontSize: "10px", fontWeight: 700, color: "var(--amber)", background: "#fde68a", padding: "1px 6px", borderRadius: "99px" }}>DUPLICATE</span>}
                                     </div>
-                                    <span style={{ fontFamily: "var(--display)", fontSize: "16px", fontWeight: 800, color: "var(--blue)", marginLeft: "12px", flexShrink: 0 }}>
-                                      {fmt(getProducts(o).reduce((s, p) => s + (Number(p.price)||0), 0))}
-                                    </span>
+                                    {o.phone && <a href={"tel:" + o.phone} style={{ fontSize: "13px", color: "var(--blue)", marginTop: "3px", display: "block", fontWeight: 600, textDecoration: "none" }}>{o.phone}</a>}
+                                    <p style={{ fontSize: "11px", color: "var(--text-faint)", marginTop: "3px" }}>{o.address}</p>
+                                    <p style={{ fontSize: "11px", color: "var(--text-faint)", marginTop: "2px" }}>{o.date}</p>
+                                    <div style={{ marginTop: "8px", display: "flex", flexDirection: "column", gap: "4px" }}>
+                                      {getProducts(o).map((p, i) => (
+                                        <div key={i} style={{ background: "var(--surface2)", border: "1px solid var(--border)", borderRadius: "var(--r-sm)", padding: "6px 10px", display: "flex", justifyContent: "space-between" }}>
+                                          <span style={{ fontSize: "12px", fontWeight: 600 }}>{p.name} x{p.qty}</span>
+                                          <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--blue)" }}>{fmt(p.price)}</span>
+                                        </div>
+                                      ))}
+                                    </div>
                                   </div>
-                                  <div style={{ display: "flex", gap: "8px", paddingTop: "12px", borderTop: "1px solid var(--border)" }}>
-                                    <button onClick={() => markDelivered(o.id)} style={{ flex: 1, padding: "13px", background: "var(--green)", border: "none", borderRadius: "var(--r-sm)", color: "#fff", fontSize: "13px", fontWeight: 700, cursor: "pointer" }}>Delivered</button>
-                                    <button onClick={() => markFailed(o.id)} style={{ flex: 1, padding: "13px", background: "#fef2f2", border: "1.5px solid #fecaca", borderRadius: "var(--r-sm)", color: "var(--red)", fontSize: "13px", fontWeight: 700, cursor: "pointer" }}>Failed</button>
-                                  </div>
+                                  <span style={{ fontFamily: "var(--display)", fontSize: "16px", fontWeight: 800, color: "var(--blue)", marginLeft: "12px", flexShrink: 0 }}>
+                                    {fmt(getProducts(o).reduce((s, p) => s + (Number(p.price) || 0), 0))}
+                                  </span>
                                 </div>
-                              ))}
-                            </div>
-                          </div>
-                        ))}
-                      </>
-                    );
-                  })()}
-
-                  {/* DELIVERED */}
-                  {visDelivered.length > 0 && (() => {
-                    const dGroups = {};
-                    visDelivered.forEach(o => { const r = o.rider||"Unassigned"; if (!dGroups[r]) dGroups[r]=[]; dGroups[r].push(o); });
-                    return (
-                      <>
-                        <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--green)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: "12px" }}>Delivered ({visDelivered.length})</p>
-                        {Object.entries(dGroups).map(([rider, orders]) => (
-                          <div key={rider} style={{ marginBottom: "20px" }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px", padding: "8px 12px", background: "var(--green)", borderRadius: "var(--r-sm)" }}>
-                              <RiderAvatar name={rider} size={26} />
-                              <span style={{ fontFamily: "var(--display)", fontSize: "13px", fontWeight: 700, color: "#fff" }}>{rider}</span>
-                              <span style={{ fontSize: "11px", color: "rgba(255,255,255,.55)", marginLeft: "auto" }}>{orders.length} delivered</span>
-                            </div>
-                            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                              {orders.map(o => (
-                                <div key={o.id} style={{ background: "#ecfdf5", border: "1.5px solid #a7f3d0", borderRadius: "var(--r)", padding: "12px 14px" }}>
-                                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
-                                    <div style={{ flex: 1 }}>
-                                      <p style={{ fontSize: "13px", fontWeight: 700 }}>{o.customerName}</p>
-                                      {o.phone && <a href={"tel:" + o.phone} style={{ fontSize: "12px", color: "var(--blue)", marginTop: "2px", display: "block", fontWeight: 600, textDecoration: "none" }}>{o.phone}</a>}
-                                      <p style={{ fontSize: "11px", color: "var(--text-faint)", marginTop: "2px" }}>{o.date}</p>
-                                      <div style={{ marginTop: "6px", display: "flex", flexDirection: "column", gap: "3px" }}>
-                                        {getProducts(o).map((p, i) => (
-                                          <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "5px 8px", background: "rgba(5,150,105,.06)", borderRadius: "var(--r-sm)" }}>
-                                            <span style={{ fontSize: "12px", fontWeight: 600 }}>{p.name} x{p.qty}</span>
-                                            <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--green)" }}>{fmt(p.price)}</span>
-                                          </div>
-                                        ))}
-                                      </div>
-                                    </div>
-                                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "6px", marginLeft: "12px", flexShrink: 0 }}>
-                                      <span style={{ fontFamily: "var(--display)", fontSize: "15px", fontWeight: 800, color: "var(--green)" }}>
-                                        {fmt(getProducts(o).reduce((s, p) => s + (Number(p.price)||0), 0))}
-                                      </span>
-                                      <button onClick={() => cancelDelivered(o.id)} style={{ padding: "5px 10px", background: "#fef2f2", border: "1.5px solid #fecaca", borderRadius: "var(--r-sm)", color: "var(--red)", fontSize: "11px", fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
-                                        Cancel
-                                      </button>
-                                    </div>
-                                  </div>
+                                <div style={{ display: "flex", gap: "8px", paddingTop: "12px", borderTop: "1px solid var(--border)" }}>
+                                  <button onClick={() => markDelivered(o.id)} style={{ flex: 1, padding: "13px", background: "var(--green)", border: "none", borderRadius: "var(--r-sm)", color: "#fff", fontSize: "13px", fontWeight: 700, cursor: "pointer" }}>Delivered</button>
+                                  <button onClick={() => markFailed(o.id)} style={{ flex: 1, padding: "13px", background: "#fef2f2", border: "1.5px solid #fecaca", borderRadius: "var(--r-sm)", color: "var(--red)", fontSize: "13px", fontWeight: 700, cursor: "pointer" }}>Failed</button>
                                 </div>
-                              ))}
-                            </div>
-                          </div>
-                        ))}
-                      </>
-                    );
-                  })()}
-
-                  {/* FAILED */}
-                  {visFailed.length > 0 && (
-                    <>
-                      <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-faint)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: "8px" }}>Failed ({visFailed.length})</p>
-                      <div style={{ display: "flex", flexDirection: "column", gap: "8px", opacity: .6 }}>
-                        {visFailed.map(o => (
-                          <div key={o.id} style={{ background: "#fff", border: "1.5px solid var(--border)", borderRadius: "var(--r)", padding: "10px 14px" }}>
-                            <p style={{ fontSize: "12px", fontWeight: 500, color: "var(--text-dim)" }}>{o.customerName} · {o.rider}</p>
-                            <p style={{ fontSize: "11px", color: "var(--text-faint)", marginTop: "2px" }}>{getProducts(o).map(p => p.name).join(", ")}</p>
-                          </div>
-                        ))}
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
-                    </>
-                  )}
+                    ))}
+                  </>
+                );
+              })()}
 
-                  {visPending.length === 0 && visDelivered.length === 0 && visFailed.length === 0 && (
-                    <p style={{ textAlign: "center", padding: "48px 0", fontSize: "13px", color: "var(--text-faint)" }}>No orders in this period</p>
-                  )}
-                </>
-              );
-            })()}
+              {/* ── DELIVERED — cancel only, no edit ── */}
+              {(() => {
+                const rD = selectedRider ? delivered.filter(o => o.rider === selectedRider) : delivered;
+                if (rD.length === 0) return null;
+                const groups = {};
+                rD.forEach(o => { const r = o.rider || "Unassigned"; if (!groups[r]) groups[r] = []; groups[r].push(o); });
+                return (
+                  <>
+                    <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--green)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: "12px" }}>Delivered ({rD.length})</p>
+                    {Object.entries(groups).map(([rider, rOrders]) => (
+                      <div key={rider} style={{ marginBottom: "20px" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px", padding: "8px 12px", background: "var(--green)", borderRadius: "var(--r-sm)" }}>
+                          <RiderAvatar name={rider} size={26} />
+                          <span style={{ fontFamily: "var(--display)", fontSize: "13px", fontWeight: 700, color: "#fff" }}>{rider}</span>
+                          <span style={{ fontSize: "11px", color: "rgba(255,255,255,.55)", marginLeft: "auto" }}>{rOrders.length} delivered</span>
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: "8px" }}>
+                          {rOrders.map(o => (
+                            <div key={o.id} style={{ background: "#ecfdf5", border: "1.5px solid #a7f3d0", borderRadius: "var(--r)", padding: "12px 14px" }}>
+                              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
+                                <div style={{ flex: 1 }}>
+                                  <p style={{ fontSize: "13px", fontWeight: 700 }}>{o.customerName}</p>
+                                  {o.phone && <a href={"tel:" + o.phone} style={{ fontSize: "12px", color: "var(--blue)", marginTop: "2px", display: "block", fontWeight: 600, textDecoration: "none" }}>{o.phone}</a>}
+                                  <p style={{ fontSize: "11px", color: "var(--text-faint)", marginTop: "2px" }}>{o.date}</p>
+                                  <div style={{ marginTop: "6px", display: "flex", flexDirection: "column", gap: "3px" }}>
+                                    {getProducts(o).map((p, i) => (
+                                      <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "5px 8px", background: "rgba(5,150,105,.06)", borderRadius: "var(--r-sm)" }}>
+                                        <span style={{ fontSize: "12px", fontWeight: 600 }}>{p.name} x{p.qty}</span>
+                                        <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--green)" }}>{fmt(p.price)}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                                <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "6px", marginLeft: "12px", flexShrink: 0 }}>
+                                  <span style={{ fontFamily: "var(--display)", fontSize: "15px", fontWeight: 800, color: "var(--green)" }}>
+                                    {fmt(getProducts(o).reduce((s, p) => s + (Number(p.price) || 0), 0))}
+                                  </span>
+                                  <button onClick={() => cancelDelivered(o.id)}
+                                    style={{ padding: "5px 10px", background: "#fef2f2", border: "1.5px solid #fecaca", borderRadius: "var(--r-sm)", color: "var(--red)", fontSize: "11px", fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
+                                    Cancel Delivery
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </>
+                );
+              })()}
+
+              {/* ── FAILED ── */}
+              {(() => {
+                const rF = selectedRider ? failed.filter(o => o.rider === selectedRider) : failed;
+                if (rF.length === 0) return null;
+                return (
+                  <>
+                    <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-faint)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: "8px" }}>Failed ({rF.length})</p>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "8px", opacity: .6 }}>
+                      {rF.map(o => (
+                        <div key={o.id} style={{ background: "#fff", border: "1.5px solid var(--border)", borderRadius: "var(--r)", padding: "10px 14px" }}>
+                          <p style={{ fontSize: "12px", fontWeight: 500, color: "var(--text-dim)" }}>{o.customerName} · {o.rider}</p>
+                          <p style={{ fontSize: "11px", color: "var(--text-faint)", marginTop: "2px" }}>{getProducts(o).map(p => p.name).join(", ")}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                );
+              })()}
+
+              {pending.length === 0 && delivered.length === 0 && failed.length === 0 && (
+                <p style={{ textAlign: "center", padding: "48px 0", fontSize: "13px", color: "var(--text-faint)" }}>No orders in this period</p>
+              )}
+              </>
+            )}
           </div>
         )}
+
         {/* ── RIDERS TAB ── */}
         {tab === "riders" && (
           <div className="fade-in">
