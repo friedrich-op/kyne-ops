@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
 const BRANCHES = ["AJA", "IDIMU", "KETU"];
@@ -842,6 +842,18 @@ function RiderManagerView({ branch, onLogout }) {
     return () => clearTimeout(t);
   }, [phoneSearch]);
 
+  // Memoize search results — only recalculates when unassigned list or search query changes
+  const searchList = useMemo(() => {
+    if (!phoneSearchD.trim()) return unassigned;
+    const q = phoneSearchD.trim().toLowerCase();
+    return unassigned.filter(o => {
+      const phone = String(o.phone || "").replace(/^'/, "").replace(/\s/g, "");
+      return phone.includes(q)
+        || (o.customerName || "").toLowerCase().includes(q)
+        || (o.address || "").toLowerCase().includes(q);
+    });
+  }, [unassigned, phoneSearchD]);
+
   function addProduct() {
     setForm(f => ({ ...f, products: [...f.products, { ...blankProduct }] }));
   }
@@ -955,21 +967,24 @@ function RiderManagerView({ branch, onLogout }) {
     sheetAdd("RoadExpenses", re).catch(() => {});
   }
 
-  const YESTERDAY = (() => {
+  const YESTERDAY = useMemo(() => {
     const d = new Date(); d.setDate(d.getDate() - 1);
     return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
-  })();
-  const allUnassigned = orders.filter(o => o.status === "Unassigned");
-  const unassigned = assignMode === "today" ? allUnassigned.filter(o => o.date === TODAY)
-    : assignMode === "yesterday" ? allUnassigned.filter(o => o.date === YESTERDAY)
-    : assignMode === "month" ? allUnassigned.filter(o => o.date.startsWith(TODAY.slice(0,7)))
-    : assignMode === "range" && assignCustomDate && assignCustomDateEnd ? allUnassigned.filter(o => o.date >= assignCustomDate && o.date <= assignCustomDateEnd)
-    : allUnassigned;
-  const filtered     = filterByPeriod(orders, mode, customDate, customDateEnd);
-  const pending      = filtered.filter(o => o.status === "Pending");
-  const delivered    = filtered.filter(o => o.status === "Delivered");
-  const failed       = filtered.filter(o => o.status === "Failed");
-  const period       = getBonusPeriod();
+  }, []);
+  const allUnassigned = useMemo(() => orders.filter(o => o.status === "Unassigned"), [orders]);
+  const unassigned = useMemo(() => {
+    if (assignMode === "today")     return allUnassigned.filter(o => o.date === TODAY);
+    if (assignMode === "yesterday") return allUnassigned.filter(o => o.date === YESTERDAY);
+    if (assignMode === "month")     return allUnassigned.filter(o => o.date.startsWith(TODAY.slice(0,7)));
+    if (assignMode === "range" && assignCustomDate && assignCustomDateEnd)
+      return allUnassigned.filter(o => o.date >= assignCustomDate && o.date <= assignCustomDateEnd);
+    return allUnassigned;
+  }, [allUnassigned, assignMode, assignCustomDate, assignCustomDateEnd, YESTERDAY]);
+  const filtered   = useMemo(() => filterByPeriod(orders, mode, customDate, customDateEnd), [orders, mode, customDate, customDateEnd]);
+  const pending    = useMemo(() => filtered.filter(o => o.status === "Pending"),   [filtered]);
+  const delivered  = useMemo(() => filtered.filter(o => o.status === "Delivered"), [filtered]);
+  const failed     = useMemo(() => filtered.filter(o => o.status === "Failed"),    [filtered]);
+  const period     = useMemo(() => getBonusPeriod(), []);
 
   const TABS = [
     { id: "log",    label: "Log Orders" },
@@ -1154,16 +1169,7 @@ function RiderManagerView({ branch, onLogout }) {
                   autoComplete="off"
                 />
                 {(() => {
-                  const searchList = phoneSearchD.trim()
-                    ? unassigned.filter(o => {
-                        const q = phoneSearchD.trim().toLowerCase();
-                        const phone = String(o.phone || "").replace(/^'/, "").replace(/\s/g, "");
-                        return phone.includes(q)
-                          || (o.customerName || "").toLowerCase().includes(q)
-                          || (o.address || "").toLowerCase().includes(q);
-                      })
-                    : unassigned;
-
+                  // searchList is memoized at component level — no recompute on render
                   if (searchList.length === 0) return (
                     <p style={{ textAlign: "center", padding: "32px 0", fontSize: "13px", color: "var(--text-faint)" }}>No matches found</p>
                   );
