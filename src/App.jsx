@@ -811,6 +811,8 @@ function RiderManagerView({ branch, onLogout }) {
   const [phoneSearch, setPhoneSearch] = useState("");
   const [phoneSearchD, setPhoneSearchD] = useState("");
   const [expandedOrderId, setExpandedOrderId] = useState(null);
+  const [assignMode, setAssignMode] = useState("today");
+  const [assignShowMore, setAssignShowMore] = useState(50);
   const [updateSearch, setUpdateSearch] = useState("");
   const [selectedRider, setSelectedRider] = useState("");
   // ── Edit delivered state ──
@@ -951,8 +953,14 @@ function RiderManagerView({ branch, onLogout }) {
     sheetAdd("RoadExpenses", re).catch(() => {});
   }
 
-  const todayOrders  = filterByPeriod(orders, "today", "");
-  const unassigned   = todayOrders.filter(o => o.status === "Unassigned");
+  const YESTERDAY = (() => {
+    const d = new Date(); d.setDate(d.getDate() - 1);
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+  })();
+  const allUnassigned = orders.filter(o => o.status === "Unassigned");
+  const unassigned = assignMode === "today" ? allUnassigned.filter(o => o.date === TODAY)
+    : assignMode === "yesterday" ? allUnassigned.filter(o => o.date === YESTERDAY)
+    : allUnassigned;
   const filtered     = filterByPeriod(orders, mode, customDate, customDateEnd);
   const pending      = filtered.filter(o => o.status === "Pending");
   const delivered    = filtered.filter(o => o.status === "Delivered");
@@ -1099,27 +1107,40 @@ function RiderManagerView({ branch, onLogout }) {
         {tab === "assign" && (
           <div className="fade-in">
             <SectionTitle title="Assign Orders" sub="Tap an order to expand and assign a rider" />
+
+            {/* Date filter */}
+            <div style={{ display: "flex", gap: "6px", marginBottom: "12px" }}>
+              {[["today","Today"],["yesterday","Yesterday"],["all","All"]].map(([id, lbl]) => (
+                <button key={id} onClick={() => { setAssignMode(id); setPhoneSearch(""); setExpandedOrderId(null); setAssignShowMore(50); }} style={{
+                  padding: "6px 16px", borderRadius: "99px", fontSize: "12px", fontWeight: 600, cursor: "pointer",
+                  border: `1.5px solid ${assignMode === id ? "var(--blue)" : "var(--border)"}`,
+                  background: assignMode === id ? "var(--blue)" : "#fff",
+                  color: assignMode === id ? "#fff" : "var(--text-dim)",
+                }}>{lbl}</button>
+              ))}
+            </div>
+
             {unassigned.length === 0 ? (
               <div style={{ background: "#ecfdf5", border: "1.5px solid #a7f3d0", borderRadius: "var(--r)", padding: "20px", textAlign: "center" }}>
                 <p style={{ fontSize: "14px", fontWeight: 600, color: "var(--green)" }}>All orders assigned</p>
-                <p style={{ fontSize: "12px", color: "var(--text-faint)", marginTop: "4px" }}>No unassigned orders for today</p>
+                <p style={{ fontSize: "12px", color: "var(--text-faint)", marginTop: "4px" }}>No unassigned orders for this period</p>
               </div>
             ) : (
               <>
                 <div style={{ background: "var(--navy)", borderRadius: "var(--r-sm)", padding: "10px 14px", marginBottom: "12px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <span style={{ fontSize: "13px", fontWeight: 700, color: "#fff" }}>{unassigned.length} unassigned orders</span>
-                  <Tag label="Today" type="navy" />
+                  <Tag label={assignMode === "today" ? "Today" : assignMode === "yesterday" ? "Yesterday" : "All"} type="navy" />
                 </div>
                 <input
                   className="k-input"
                   placeholder="Search by name, phone or address..."
                   value={phoneSearch}
-                  onChange={e => { setPhoneSearch(e.target.value); setExpandedOrderId(null); }}
+                  onChange={e => { setPhoneSearch(e.target.value); setExpandedOrderId(null); setAssignShowMore(50); }}
                   style={{ marginBottom: "8px" }}
                   autoComplete="off"
                 />
                 {(() => {
-                  const list = phoneSearchD.trim()
+                  const filtered = phoneSearchD.trim()
                     ? unassigned.filter(o => {
                         const q = phoneSearchD.trim().toLowerCase();
                         const phone = String(o.phone || "").replace(/^'/, "").replace(/\s/g, "");
@@ -1128,58 +1149,72 @@ function RiderManagerView({ branch, onLogout }) {
                           || (o.address || "").toLowerCase().includes(q);
                       })
                     : unassigned;
-                  if (list.length === 0) return (
+
+                  if (filtered.length === 0) return (
                     <p style={{ textAlign: "center", padding: "32px 0", fontSize: "13px", color: "var(--text-faint)" }}>No matches found</p>
                   );
+
+                  const visible = filtered.slice(0, assignShowMore);
+
                   return (
-                    <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                      {list.map(o => {
-                        const isExpanded = expandedOrderId === o.id;
-                        const selectedR  = assignRider[o.id] || "";
-                        const prods      = getProducts(o);
-                        const total      = prods.reduce((s, p) => s + (Number(p.price) || 0), 0);
-                        return (
-                          <div key={o.id} style={{ background: "#fff", border: "1.5px solid " + (isExpanded ? "var(--blue)" : "var(--border)"), borderRadius: "var(--r-sm)", overflow: "hidden" }}>
-                            <div onClick={() => setExpandedOrderId(isExpanded ? null : o.id)} style={{ padding: "10px 12px", display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", gap: "8px" }}>
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <p style={{ fontSize: "13px", fontWeight: 700, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{o.customerName}</p>
-                                <p style={{ fontSize: "11px", color: "var(--text-faint)", marginTop: "1px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                                  {o.phone ? o.phone + " · " : ""}{o.address}
-                                </p>
+                    <>
+                      {phoneSearchD.trim() && (
+                        <p style={{ fontSize: "11px", color: "var(--text-faint)", marginBottom: "8px" }}>{filtered.length} match{filtered.length !== 1 ? "es" : ""}</p>
+                      )}
+                      <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                        {visible.map(o => {
+                          const isExpanded = expandedOrderId === o.id;
+                          const selectedR  = assignRider[o.id] || "";
+                          const prods      = getProducts(o);
+                          const total      = prods.reduce((s, p) => s + (Number(p.price) || 0), 0);
+                          return (
+                            <div key={o.id} style={{ background: "#fff", border: "1.5px solid " + (isExpanded ? "var(--blue)" : "var(--border)"), borderRadius: "var(--r-sm)", overflow: "hidden" }}>
+                              <div onClick={() => setExpandedOrderId(isExpanded ? null : o.id)} style={{ padding: "10px 12px", display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", gap: "8px" }}>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <p style={{ fontSize: "13px", fontWeight: 700, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{o.customerName}</p>
+                                  <p style={{ fontSize: "11px", color: "var(--text-faint)", marginTop: "1px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                    {o.phone ? o.phone + " · " : ""}{o.address}
+                                  </p>
+                                </div>
+                                <div style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
+                                  <span style={{ fontFamily: "var(--display)", fontSize: "13px", fontWeight: 800, color: "var(--blue)" }}>{fmt(total)}</span>
+                                  <span style={{ fontSize: "11px", color: isExpanded ? "var(--blue)" : "var(--text-faint)", fontWeight: 700 }}>{isExpanded ? "▲" : "▼"}</span>
+                                </div>
                               </div>
-                              <div style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
-                                <span style={{ fontFamily: "var(--display)", fontSize: "13px", fontWeight: 800, color: "var(--blue)" }}>{fmt(total)}</span>
-                                <span style={{ fontSize: "11px", color: isExpanded ? "var(--blue)" : "var(--text-faint)", fontWeight: 700 }}>{isExpanded ? "▲" : "▼"}</span>
-                              </div>
+                              {isExpanded && (
+                                <div style={{ borderTop: "1px solid var(--border)", padding: "10px 12px", background: "var(--surface2)" }}>
+                                  <div style={{ marginBottom: "10px" }}>
+                                    {prods.map((p, i) => (
+                                      <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", borderBottom: i < prods.length - 1 ? "1px solid var(--border)" : "none" }}>
+                                        <span style={{ fontSize: "12px", color: "var(--text-dim)" }}>{p.name} ×{p.qty}</span>
+                                        <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--blue)" }}>{fmt(p.price)}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                  <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                                    <select value={selectedR} onChange={e => setAssignRider(p => ({ ...p, [o.id]: e.target.value }))} className="k-input" style={{ flex: 1, fontWeight: 600 }} onClick={e => e.stopPropagation()}>
+                                      <option value="">Select rider...</option>
+                                      {RIDERS[branch].map(r => <option key={r} value={r}>{r}</option>)}
+                                    </select>
+                                    <button
+                                      onClick={e => { e.stopPropagation(); assignOrder(o.id); setExpandedOrderId(null); }}
+                                      disabled={!selectedR}
+                                      style={{ padding: "10px 16px", flexShrink: 0, background: !selectedR ? "#f1f5f9" : "var(--green)", border: "none", borderRadius: "var(--r-sm)", color: !selectedR ? "#94a3b8" : "#fff", fontFamily: "var(--display)", fontSize: "13px", fontWeight: 700, cursor: !selectedR ? "not-allowed" : "pointer", whiteSpace: "nowrap" }}>
+                                      Assign
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
                             </div>
-                            {isExpanded && (
-                              <div style={{ borderTop: "1px solid var(--border)", padding: "10px 12px", background: "var(--surface2)" }}>
-                                <div style={{ marginBottom: "10px" }}>
-                                  {prods.map((p, i) => (
-                                    <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", borderBottom: i < prods.length - 1 ? "1px solid var(--border)" : "none" }}>
-                                      <span style={{ fontSize: "12px", color: "var(--text-dim)" }}>{p.name} x{p.qty}</span>
-                                      <span style={{ fontSize: "12px", fontWeight: 700, color: "var(--blue)" }}>{fmt(p.price)}</span>
-                                    </div>
-                                  ))}
-                                </div>
-                                <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                                  <select value={selectedR} onChange={e => setAssignRider(p => ({ ...p, [o.id]: e.target.value }))} className="k-input" style={{ flex: 1, fontWeight: 600 }} onClick={e => e.stopPropagation()}>
-                                    <option value="">Select rider...</option>
-                                    {RIDERS[branch].map(r => <option key={r} value={r}>{r}</option>)}
-                                  </select>
-                                  <button
-                                    onClick={e => { e.stopPropagation(); assignOrder(o.id); setExpandedOrderId(null); }}
-                                    disabled={!selectedR}
-                                    style={{ padding: "10px 16px", flexShrink: 0, background: !selectedR ? "#f1f5f9" : "var(--green)", border: "none", borderRadius: "var(--r-sm)", color: !selectedR ? "#94a3b8" : "#fff", fontFamily: "var(--display)", fontSize: "13px", fontWeight: 700, cursor: !selectedR ? "not-allowed" : "pointer", whiteSpace: "nowrap" }}>
-                                    Assign
-                                  </button>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
+                          );
+                        })}
+                      </div>
+                      {filtered.length > assignShowMore && (
+                        <button onClick={() => setAssignShowMore(n => n + 50)} style={{ width: "100%", marginTop: "10px", padding: "12px", background: "var(--blue-pale)", border: "1.5px solid var(--blue-pale2)", borderRadius: "var(--r-sm)", color: "var(--blue)", fontSize: "13px", fontWeight: 700, cursor: "pointer" }}>
+                          Show more ({filtered.length - assignShowMore} remaining)
+                        </button>
+                      )}
+                    </>
                   );
                 })()}
               </>
@@ -1375,7 +1410,7 @@ function RiderManagerView({ branch, onLogout }) {
                 onChange={e => setSelectedRider(e.target.value)}
                 style={{ fontWeight: 600, fontSize: "15px" }}
               >
-                <option value="">— Select a rider —</option>
+                <option value="">— All riders (select one for large periods) —</option>
                 {RIDERS[branch].map(r => {
                   const rP = pending.filter(o => o.rider === r).length;
                   const rD = delivered.filter(o => o.rider === r).length;
@@ -1437,7 +1472,7 @@ function RiderManagerView({ branch, onLogout }) {
                           <span style={{ fontSize: "11px", color: "rgba(255,255,255,.45)", marginLeft: "auto" }}>{rOrders.length} order{rOrders.length !== 1 ? "s" : ""}</span>
                         </div>
                         <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                          {rOrders.map(o => {
+                          {rOrders.slice(0, 50).map(o => {
                             const isDup = dupIds.has(o.id);
                             return (
                               <div key={o.id} style={{ background: isDup ? "#fffbeb" : "#fff", border: "1.5px solid " + (isDup ? "#fde68a" : "var(--border)"), borderRadius: "var(--r)", padding: "12px 14px", boxShadow: "var(--shadow)" }}>
@@ -1494,7 +1529,7 @@ function RiderManagerView({ branch, onLogout }) {
                           <span style={{ fontSize: "11px", color: "rgba(255,255,255,.55)", marginLeft: "auto" }}>{rOrders.length} delivered</span>
                         </div>
                         <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: "8px" }}>
-                          {rOrders.map(o => (
+                          {rOrders.slice(0, 50).map(o => (
                             <div key={o.id} style={{ background: "#ecfdf5", border: "1.5px solid #a7f3d0", borderRadius: "var(--r)", padding: "12px 14px" }}>
                               <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
                                 <div style={{ flex: 1 }}>
