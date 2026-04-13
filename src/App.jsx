@@ -1140,7 +1140,7 @@ function RiderManagerView({ branch, onLogout }) {
                   autoComplete="off"
                 />
                 {(() => {
-                  const filtered = phoneSearchD.trim()
+                  const searchList = phoneSearchD.trim()
                     ? unassigned.filter(o => {
                         const q = phoneSearchD.trim().toLowerCase();
                         const phone = String(o.phone || "").replace(/^'/, "").replace(/\s/g, "");
@@ -1150,16 +1150,16 @@ function RiderManagerView({ branch, onLogout }) {
                       })
                     : unassigned;
 
-                  if (filtered.length === 0) return (
+                  if (searchList.length === 0) return (
                     <p style={{ textAlign: "center", padding: "32px 0", fontSize: "13px", color: "var(--text-faint)" }}>No matches found</p>
                   );
 
-                  const visible = filtered.slice(0, assignShowMore);
+                  const visible = searchList.slice(0, assignShowMore);
 
                   return (
                     <>
                       {phoneSearchD.trim() && (
-                        <p style={{ fontSize: "11px", color: "var(--text-faint)", marginBottom: "8px" }}>{filtered.length} match{filtered.length !== 1 ? "es" : ""}</p>
+                        <p style={{ fontSize: "11px", color: "var(--text-faint)", marginBottom: "8px" }}>{searchList.length} match{searchList.length !== 1 ? "es" : ""}</p>
                       )}
                       <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
                         {visible.map(o => {
@@ -1209,9 +1209,9 @@ function RiderManagerView({ branch, onLogout }) {
                           );
                         })}
                       </div>
-                      {filtered.length > assignShowMore && (
+                      {searchList.length > assignShowMore && (
                         <button onClick={() => setAssignShowMore(n => n + 50)} style={{ width: "100%", marginTop: "10px", padding: "12px", background: "var(--blue-pale)", border: "1.5px solid var(--blue-pale2)", borderRadius: "var(--r-sm)", color: "var(--blue)", fontSize: "13px", fontWeight: 700, cursor: "pointer" }}>
-                          Show more ({filtered.length - assignShowMore} remaining)
+                          Show more ({searchList.length - assignShowMore} remaining)
                         </button>
                       )}
                     </>
