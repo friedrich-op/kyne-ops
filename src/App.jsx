@@ -792,22 +792,26 @@ function UpdateTab({ mode, setMode, customDate, setCustomDate, customDateEnd, se
   editingId, editForm, setEditForm, setEditingId, submitDelivered,
   markDelivered, markFailed, cancelDelivered, getProducts, branch }) {
 
-  const visPending   = (selectedRider ? pending.filter(o => o.rider === selectedRider)   : pending).slice(0, 50);
-  const visDelivered = (selectedRider ? delivered.filter(o => o.rider === selectedRider) : delivered).slice(0, 50);
-  const visFailed    = (selectedRider ? failed.filter(o => o.rider === selectedRider)    : failed).slice(0, 50);
-
-  // Duplicate detection
-  const allVis = [...visPending, ...visDelivered, ...visFailed];
-  const dSeen = {}; const dupIds = new Set();
-  allVis.forEach(o => {
-    const k = (o.customerName||"").trim().toLowerCase() + "|" + (o.phone||"").replace(/^\'/, "").trim() + "|" + o.date;
-    if (dSeen[k]) { dupIds.add(o.id); dupIds.add(dSeen[k]); } else dSeen[k] = o.id;
-  });
-
-  const pGroups = {}; visPending.forEach(o => { const r = o.rider||"Unassigned"; if (!pGroups[r]) pGroups[r]=[]; pGroups[r].push(o); });
-  const dGroups = {}; visDelivered.forEach(o => { const r = o.rider||"Unassigned"; if (!dGroups[r]) dGroups[r]=[]; dGroups[r].push(o); });
-
   const wideNoRider = !selectedRider && (mode==="week"||mode==="month"||mode==="range"||mode==="all");
+
+  const visPending   = useMemo(() => (selectedRider ? pending.filter(o=>o.rider===selectedRider) : pending).slice(0,50),   [pending,   selectedRider]);
+  const visDelivered = useMemo(() => (selectedRider ? delivered.filter(o=>o.rider===selectedRider) : delivered).slice(0,50), [delivered, selectedRider]);
+  const visFailed    = useMemo(() => (selectedRider ? failed.filter(o=>o.rider===selectedRider) : failed).slice(0,50),    [failed,    selectedRider]);
+
+  const dupIds = useMemo(() => {
+    const seen = {}; const dups = new Set();
+    [...visPending, ...visDelivered, ...visFailed].forEach(o => {
+      try {
+        const phone = String(o.phone || "").replace(/^'/, "").trim();
+        const k = (o.customerName||"").trim().toLowerCase()+"|"+phone+"|"+(o.date||"");
+        if (seen[k]) { dups.add(o.id); dups.add(seen[k]); } else seen[k] = o.id;
+      } catch(e) {}
+    });
+    return dups;
+  }, [visPending, visDelivered, visFailed]);
+
+  const pGroups = useMemo(() => { const g={}; visPending.forEach(o=>{const r=o.rider||"Unassigned";if(!g[r])g[r]=[];g[r].push(o);}); return g; }, [visPending]);
+  const dGroups = useMemo(() => { const g={}; visDelivered.forEach(o=>{const r=o.rider||"Unassigned";if(!g[r])g[r]=[];g[r].push(o);}); return g; }, [visDelivered]);
 
   return (
     <div className="fade-in">
@@ -822,21 +826,21 @@ function UpdateTab({ mode, setMode, customDate, setCustomDate, customDateEnd, se
         </div>
         <div style={{ display:"flex", flexDirection:"column", gap:"10px", marginBottom:"10px" }}>
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"10px" }}>
-            <div><label className="k-label">Rider</label><select className="k-input" value={roadForm.rider} onChange={e => setRoadForm(f=>({...f,rider:e.target.value}))}>{RIDERS[branch].map(r=><option key={r}>{r}</option>)}</select></div>
-            <div><label className="k-label">Date</label><input type="date" className="k-input" value={roadForm.date} onChange={e => setRoadForm(f=>({...f,date:e.target.value}))} style={{fontSize:"14px"}}/></div>
+            <div><label className="k-label">Rider</label><select className="k-input" value={roadForm.rider} onChange={e=>setRoadForm(f=>({...f,rider:e.target.value}))}>{RIDERS[branch].map(r=><option key={r}>{r}</option>)}</select></div>
+            <div><label className="k-label">Date</label><input type="date" className="k-input" value={roadForm.date} onChange={e=>setRoadForm(f=>({...f,date:e.target.value}))} style={{fontSize:"14px"}}/></div>
           </div>
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"10px" }}>
-            <div><label className="k-label">Amount (₦)</label><input type="number" className="k-input" placeholder="0" value={roadForm.amount} onChange={e => setRoadForm(f=>({...f,amount:e.target.value}))} /></div>
-            <div><label className="k-label">Note</label><input className="k-input" placeholder="Fuel, toll..." value={roadForm.note} onChange={e => setRoadForm(f=>({...f,note:e.target.value}))} /></div>
+            <div><label className="k-label">Amount (₦)</label><input type="number" className="k-input" placeholder="0" value={roadForm.amount} onChange={e=>setRoadForm(f=>({...f,amount:e.target.value}))} /></div>
+            <div><label className="k-label">Note</label><input className="k-input" placeholder="Fuel, toll..." value={roadForm.note} onChange={e=>setRoadForm(f=>({...f,note:e.target.value}))} /></div>
           </div>
         </div>
-        <button onClick={saveRoadExpense} disabled={!roadForm.amount} style={{ width:"100%", padding:"9px", background:!roadForm.amount?"#f1f5f9":"var(--blue)", border:"none", borderRadius:"var(--r-sm)", color:!roadForm.amount?"#94a3b8":"#fff", fontFamily:"var(--display)", fontSize:"12px", fontWeight:700, cursor:!roadForm.amount?"not-allowed":"pointer" }}>Save Road Expense</button>
+        <button onClick={saveRoadExpense} disabled={!roadForm.amount} style={{width:"100%",padding:"9px",background:!roadForm.amount?"#f1f5f9":"var(--blue)",border:"none",borderRadius:"var(--r-sm)",color:!roadForm.amount?"#94a3b8":"#fff",fontFamily:"var(--display)",fontSize:"12px",fontWeight:700,cursor:!roadForm.amount?"not-allowed":"pointer"}}>Save Road Expense</button>
         {Object.values(roadExpenses).filter(r=>r.date===TODAY).length > 0 && (
-          <div style={{ marginTop:"10px", paddingTop:"10px", borderTop:"1px solid var(--blue-pale2)" }}>
+          <div style={{marginTop:"10px",paddingTop:"10px",borderTop:"1px solid var(--blue-pale2)"}}>
             {Object.values(roadExpenses).filter(r=>r.date===TODAY).map(r=>(
-              <div key={r.id} style={{ display:"flex", justifyContent:"space-between", padding:"4px 0", fontSize:"12px" }}>
-                <span style={{ color:"var(--text-dim)", fontWeight:500 }}>{r.rider}</span>
-                <span style={{ color:"var(--red)", fontWeight:600 }}>{fmt(r.amount)}{r.note?" · "+r.note:""}</span>
+              <div key={r.id} style={{display:"flex",justifyContent:"space-between",padding:"4px 0",fontSize:"12px"}}>
+                <span style={{color:"var(--text-dim)",fontWeight:500}}>{r.rider}</span>
+                <span style={{color:"var(--red)",fontWeight:600}}>{fmt(r.amount)}{r.note?" · "+r.note:""}</span>
               </div>
             ))}
           </div>
@@ -845,113 +849,108 @@ function UpdateTab({ mode, setMode, customDate, setCustomDate, customDateEnd, se
 
       {/* Deliver modal */}
       {editingId && editForm && (
-        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.5)", zIndex:50, display:"flex", alignItems:"center", justifyContent:"center", padding:"16px" }}>
-          <div className="slide-down" style={{ background:"#fff", borderRadius:"var(--r-lg)", padding:"24px", width:"100%", maxWidth:"500px", maxHeight:"90vh", overflowY:"auto", boxShadow:"0 20px 60px rgba(0,0,0,.3)" }}>
-            <p style={{ fontFamily:"var(--display)", fontSize:"15px", fontWeight:800, marginBottom:"4px" }}>Mark as Delivered</p>
-            <p style={{ fontSize:"12px", color:"var(--text-faint)", marginBottom:"16px" }}>{editForm.customerName} · {editForm.rider}</p>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"10px" }}>
-              <p style={{ fontSize:"11px", fontWeight:600, color:"var(--text-dim)", textTransform:"uppercase" }}>Edit Products</p>
-              <button onClick={() => setEditForm(f=>({...f,products:[...f.products,{vendor:VENDOR_NAMES[0],name:"",qty:1,price:""}]}))} style={{ background:"var(--blue-pale)", border:"1.5px solid var(--blue-pale2)", color:"var(--blue)", borderRadius:"var(--r-sm)", padding:"4px 10px", fontSize:"11px", fontWeight:700, cursor:"pointer" }}>+ Add</button>
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:50,display:"flex",alignItems:"center",justifyContent:"center",padding:"16px"}}>
+          <div className="slide-down" style={{background:"#fff",borderRadius:"var(--r-lg)",padding:"24px",width:"100%",maxWidth:"500px",maxHeight:"90vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,.3)"}}>
+            <p style={{fontFamily:"var(--display)",fontSize:"15px",fontWeight:800,marginBottom:"4px"}}>Mark as Delivered</p>
+            <p style={{fontSize:"12px",color:"var(--text-faint)",marginBottom:"16px"}}>{editForm.customerName} · {editForm.rider}</p>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"10px"}}>
+              <p style={{fontSize:"11px",fontWeight:600,color:"var(--text-dim)",textTransform:"uppercase"}}>Edit Products</p>
+              <button onClick={()=>setEditForm(f=>({...f,products:[...f.products,{vendor:VENDOR_NAMES[0],name:"",qty:1,price:""}]}))} style={{background:"var(--blue-pale)",border:"1.5px solid var(--blue-pale2)",color:"var(--blue)",borderRadius:"var(--r-sm)",padding:"4px 10px",fontSize:"11px",fontWeight:700,cursor:"pointer"}}>+ Add</button>
             </div>
-            {editForm.products.map((p, i) => (
-              <div key={i} style={{ background:"var(--surface2)", border:"1px solid var(--border)", borderRadius:"var(--r-sm)", padding:"10px", marginBottom:"8px" }}>
-                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"8px", marginBottom:"8px" }}>
+            {editForm.products.map((p,i)=>(
+              <div key={i} style={{background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"var(--r-sm)",padding:"10px",marginBottom:"8px"}}>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"8px",marginBottom:"8px"}}>
                   <div><label className="k-label">Vendor</label><select className="k-input" value={p.vendor||""} onChange={e=>setEditForm(f=>({...f,products:f.products.map((pp,ii)=>ii===i?{...pp,vendor:e.target.value,name:""}:pp)}))}>  <option value="">Select...</option>{VENDOR_NAMES.map(v=><option key={v} value={v}>{v}</option>)}</select></div>
                   <div><label className="k-label">Product</label><select className="k-input" value={p.name||""} onChange={e=>setEditForm(f=>({...f,products:f.products.map((pp,ii)=>ii===i?{...pp,name:e.target.value}:pp)}))} disabled={!p.vendor}><option value="">Select...</option>{p.vendor&&(VENDORS[p.vendor]||[]).map(n=><option key={n} value={n}>{n}</option>)}</select></div>
                 </div>
-                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"8px" }}>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"8px"}}>
                   <div><label className="k-label">Qty</label><input type="number" className="k-input" min="1" value={p.qty} onChange={e=>setEditForm(f=>({...f,products:f.products.map((pp,ii)=>ii===i?{...pp,qty:e.target.value}:pp)}))}/></div>
                   <div><label className="k-label">Price (₦)</label><input type="number" className="k-input" value={p.price} onChange={e=>setEditForm(f=>({...f,products:f.products.map((pp,ii)=>ii===i?{...pp,price:e.target.value}:pp)}))}/></div>
                 </div>
               </div>
             ))}
-            <div style={{ background:"var(--blue-pale)", border:"1.5px solid var(--blue-pale2)", borderRadius:"var(--r-sm)", padding:"10px 14px", marginBottom:"14px", display:"flex", justifyContent:"space-between" }}>
-              <span style={{ fontSize:"12px", fontWeight:600, color:"var(--text-dim)" }}>Total</span>
-              <span style={{ fontFamily:"var(--display)", fontSize:"14px", fontWeight:800, color:"var(--blue)" }}>{fmt(editForm.products.reduce((s,p)=>s+(Number(p.price)||0),0))}</span>
+            <div style={{background:"var(--blue-pale)",border:"1.5px solid var(--blue-pale2)",borderRadius:"var(--r-sm)",padding:"10px 14px",marginBottom:"14px",display:"flex",justifyContent:"space-between"}}>
+              <span style={{fontSize:"12px",fontWeight:600,color:"var(--text-dim)"}}>Total</span>
+              <span style={{fontFamily:"var(--display)",fontSize:"14px",fontWeight:800,color:"var(--blue)"}}>{fmt(editForm.products.reduce((s,p)=>s+(Number(p.price)||0),0))}</span>
             </div>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"8px", marginBottom:"12px" }}>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"8px",marginBottom:"12px"}}>
               <div><label className="k-label">Road Expense (₦)</label><input type="number" className="k-input" placeholder="0" value={editForm.roadExpense} onChange={e=>setEditForm(f=>({...f,roadExpense:e.target.value}))}/></div>
               <div><label className="k-label">Expense Note</label><input className="k-input" placeholder="Fuel..." value={editForm.expenseNote} onChange={e=>setEditForm(f=>({...f,expenseNote:e.target.value}))}/></div>
             </div>
-            <div style={{ display:"flex", gap:"8px" }}>
-              <button onClick={submitDelivered} style={{ flex:1, padding:"10px", background:"var(--green)", border:"none", borderRadius:"var(--r-sm)", color:"#fff", fontFamily:"var(--display)", fontSize:"13px", fontWeight:700, cursor:"pointer" }}>Confirm Delivered</button>
-              <button onClick={() => { setEditingId(null); setEditForm(null); }} style={{ padding:"10px 16px", background:"#fff", border:"1.5px solid var(--border)", borderRadius:"var(--r-sm)", color:"var(--text-dim)", fontSize:"12px", cursor:"pointer" }}>Cancel</button>
+            <div style={{display:"flex",gap:"8px"}}>
+              <button onClick={submitDelivered} style={{flex:1,padding:"10px",background:"var(--green)",border:"none",borderRadius:"var(--r-sm)",color:"#fff",fontFamily:"var(--display)",fontSize:"13px",fontWeight:700,cursor:"pointer"}}>Confirm Delivered</button>
+              <button onClick={()=>{setEditingId(null);setEditForm(null);}} style={{padding:"10px 16px",background:"#fff",border:"1.5px solid var(--border)",borderRadius:"var(--r-sm)",color:"var(--text-dim)",fontSize:"12px",cursor:"pointer"}}>Cancel</button>
             </div>
           </div>
         </div>
       )}
 
       {/* Rider dropdown */}
-      <div style={{ marginBottom:"12px" }}>
+      <div style={{marginBottom:"12px"}}>
         <label className="k-label">Filter by Rider</label>
-        <select className="k-input" value={selectedRider} onChange={e => setSelectedRider(e.target.value)} style={{ fontWeight:600, fontSize:"15px" }}>
+        <select className="k-input" value={selectedRider} onChange={e=>setSelectedRider(e.target.value)} style={{fontWeight:600,fontSize:"15px"}}>
           <option value="">All riders</option>
-          {RIDERS[branch].filter(r => pending.filter(o=>o.rider===r).length + delivered.filter(o=>o.rider===r).length + failed.filter(o=>o.rider===r).length > 0).map(r => {
-            const np = pending.filter(o=>o.rider===r).length;
-            const nd = delivered.filter(o=>o.rider===r).length;
+          {RIDERS[branch].filter(r=>pending.filter(o=>o.rider===r).length+delivered.filter(o=>o.rider===r).length+failed.filter(o=>o.rider===r).length>0).map(r=>{
+            const np=pending.filter(o=>o.rider===r).length;
+            const nd=delivered.filter(o=>o.rider===r).length;
             return <option key={r} value={r}>{r}{np>0?" — "+np+" pending":""}{nd>0?(np>0?", ":" — ")+nd+" delivered":""}</option>;
           })}
         </select>
       </div>
 
-      {/* Wide period guard */}
       {wideNoRider ? (
-        <div style={{ background:"var(--blue-pale)", border:"1.5px solid var(--blue-pale2)", borderRadius:"var(--r)", padding:"20px", textAlign:"center" }}>
-          <p style={{ fontSize:"14px", fontWeight:700, color:"var(--blue)", marginBottom:"4px" }}>Select a rider above</p>
-          <p style={{ fontSize:"12px", color:"var(--text-faint)" }}>Too many orders — pick a rider to see their orders</p>
+        <div style={{background:"var(--blue-pale)",border:"1.5px solid var(--blue-pale2)",borderRadius:"var(--r)",padding:"20px",textAlign:"center"}}>
+          <p style={{fontSize:"14px",fontWeight:700,color:"var(--blue)",marginBottom:"4px"}}>Select a rider above</p>
+          <p style={{fontSize:"12px",color:"var(--text-faint)"}}>Too many orders — pick a rider to see their orders</p>
         </div>
       ) : (
         <div>
-          {/* Duplicate warning */}
           {dupIds.size > 0 && (
-            <div style={{ background:"#fffbeb", border:"1.5px solid #fde68a", borderRadius:"var(--r-sm)", padding:"10px 14px", marginBottom:"12px", display:"flex", alignItems:"center", gap:"10px" }}>
-              <span style={{ fontSize:"18px" }}>⚠️</span>
+            <div style={{background:"#fffbeb",border:"1.5px solid #fde68a",borderRadius:"var(--r-sm)",padding:"10px 14px",marginBottom:"12px",display:"flex",alignItems:"center",gap:"10px"}}>
+              <span style={{fontSize:"18px"}}>⚠️</span>
               <div>
-                <p style={{ fontSize:"13px", fontWeight:700, color:"var(--amber)" }}>{dupIds.size} possible duplicate order{dupIds.size!==1?"s":""}</p>
-                <p style={{ fontSize:"11px", color:"#92400e", marginTop:"2px" }}>Same customer, phone and date</p>
+                <p style={{fontSize:"13px",fontWeight:700,color:"var(--amber)"}}>{dupIds.size} possible duplicate order{dupIds.size!==1?"s":""}</p>
+                <p style={{fontSize:"11px",color:"#92400e",marginTop:"2px"}}>Same customer, phone and date</p>
               </div>
             </div>
           )}
 
-          {/* PENDING */}
           {visPending.length > 0 && (
             <div>
-              <p style={{ fontSize:"11px", fontWeight:600, color:"var(--amber)", textTransform:"uppercase", letterSpacing:".06em", marginBottom:"12px" }}>Pending ({visPending.length})</p>
-              {Object.entries(pGroups).map(([rider, ords]) => (
-                <div key={rider} style={{ marginBottom:"20px" }}>
-                  <div style={{ display:"flex", alignItems:"center", gap:"8px", marginBottom:"8px", padding:"8px 12px", background:"var(--navy)", borderRadius:"var(--r-sm)" }}>
-                    <RiderAvatar name={rider} size={26} />
-                    <span style={{ fontFamily:"var(--display)", fontSize:"13px", fontWeight:700, color:"#fff" }}>{rider}</span>
-                    <span style={{ fontSize:"11px", color:"rgba(255,255,255,.45)", marginLeft:"auto" }}>{ords.length} order{ords.length!==1?"s":""}</span>
+              <p style={{fontSize:"11px",fontWeight:600,color:"var(--amber)",textTransform:"uppercase",letterSpacing:".06em",marginBottom:"12px"}}>Pending ({visPending.length})</p>
+              {Object.entries(pGroups).map(([rider,ords])=>(
+                <div key={rider} style={{marginBottom:"20px"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"8px",padding:"8px 12px",background:"var(--navy)",borderRadius:"var(--r-sm)"}}>
+                    <RiderAvatar name={rider} size={26}/>
+                    <span style={{fontFamily:"var(--display)",fontSize:"13px",fontWeight:700,color:"#fff"}}>{rider}</span>
+                    <span style={{fontSize:"11px",color:"rgba(255,255,255,.45)",marginLeft:"auto"}}>{ords.length} order{ords.length!==1?"s":""}</span>
                   </div>
-                  <div style={{ display:"flex", flexDirection:"column", gap:"8px" }}>
-                    {ords.map(o => (
-                      <div key={o.id} style={{ background:dupIds.has(o.id)?"#fffbeb":"#fff", border:"1.5px solid "+(dupIds.has(o.id)?"#fde68a":"var(--border)"), borderRadius:"var(--r)", padding:"12px 14px", boxShadow:"var(--shadow)" }}>
-                        <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:"8px" }}>
-                          <div style={{ flex:1 }}>
-                            <div style={{ display:"flex", alignItems:"center", gap:"6px" }}>
-                              <p style={{ fontSize:"14px", fontWeight:700 }}>{o.customerName}</p>
-                              {dupIds.has(o.id) && <span style={{ fontSize:"10px", fontWeight:700, color:"var(--amber)", background:"#fde68a", padding:"1px 6px", borderRadius:"99px" }}>DUP</span>}
+                  <div style={{display:"flex",flexDirection:"column",gap:"8px"}}>
+                    {ords.map(o=>(
+                      <div key={o.id} style={{background:dupIds.has(o.id)?"#fffbeb":"#fff",border:"1.5px solid "+(dupIds.has(o.id)?"#fde68a":"var(--border)"),borderRadius:"var(--r)",padding:"12px 14px",boxShadow:"var(--shadow)"}}>
+                        <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:"8px"}}>
+                          <div style={{flex:1}}>
+                            <div style={{display:"flex",alignItems:"center",gap:"6px"}}>
+                              <p style={{fontSize:"14px",fontWeight:700}}>{o.customerName}</p>
+                              {dupIds.has(o.id)&&<span style={{fontSize:"10px",fontWeight:700,color:"var(--amber)",background:"#fde68a",padding:"1px 6px",borderRadius:"99px"}}>DUP</span>}
                             </div>
-                            {o.phone && <a href={"tel:"+o.phone} style={{ fontSize:"13px", color:"var(--blue)", marginTop:"3px", display:"block", fontWeight:600, textDecoration:"none" }}>{o.phone}</a>}
-                            <p style={{ fontSize:"11px", color:"var(--text-faint)", marginTop:"3px" }}>{o.address}</p>
-                            <p style={{ fontSize:"11px", color:"var(--text-faint)", marginTop:"2px" }}>{o.date}</p>
-                            <div style={{ marginTop:"8px", display:"flex", flexDirection:"column", gap:"4px" }}>
-                              {getProducts(o).map((p,i) => (
-                                <div key={i} style={{ background:"var(--surface2)", border:"1px solid var(--border)", borderRadius:"var(--r-sm)", padding:"6px 10px", display:"flex", justifyContent:"space-between" }}>
-                                  <span style={{ fontSize:"12px", fontWeight:600 }}>{p.name} x{p.qty}</span>
-                                  <span style={{ fontSize:"12px", fontWeight:700, color:"var(--blue)" }}>{fmt(p.price)}</span>
+                            {o.phone&&<a href={"tel:"+o.phone} style={{fontSize:"13px",color:"var(--blue)",marginTop:"3px",display:"block",fontWeight:600,textDecoration:"none"}}>{o.phone}</a>}
+                            <p style={{fontSize:"11px",color:"var(--text-faint)",marginTop:"3px"}}>{o.address}</p>
+                            <p style={{fontSize:"11px",color:"var(--text-faint)",marginTop:"2px"}}>{o.date}</p>
+                            <div style={{marginTop:"8px",display:"flex",flexDirection:"column",gap:"4px"}}>
+                              {getProducts(o).map((p,i)=>(
+                                <div key={i} style={{background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"var(--r-sm)",padding:"6px 10px",display:"flex",justifyContent:"space-between"}}>
+                                  <span style={{fontSize:"12px",fontWeight:600}}>{p.name} x{p.qty}</span>
+                                  <span style={{fontSize:"12px",fontWeight:700,color:"var(--blue)"}}>{fmt(p.price)}</span>
                                 </div>
                               ))}
                             </div>
                           </div>
-                          <span style={{ fontFamily:"var(--display)", fontSize:"16px", fontWeight:800, color:"var(--blue)", marginLeft:"12px", flexShrink:0 }}>
-                            {fmt(getProducts(o).reduce((s,p)=>s+(Number(p.price)||0),0))}
-                          </span>
+                          <span style={{fontFamily:"var(--display)",fontSize:"16px",fontWeight:800,color:"var(--blue)",marginLeft:"12px",flexShrink:0}}>{fmt(getProducts(o).reduce((s,p)=>s+(Number(p.price)||0),0))}</span>
                         </div>
-                        <div style={{ display:"flex", gap:"8px", paddingTop:"12px", borderTop:"1px solid var(--border)" }}>
-                          <button onClick={() => markDelivered(o.id)} style={{ flex:1, padding:"13px", background:"var(--green)", border:"none", borderRadius:"var(--r-sm)", color:"#fff", fontSize:"13px", fontWeight:700, cursor:"pointer" }}>Delivered</button>
-                          <button onClick={() => markFailed(o.id)} style={{ flex:1, padding:"13px", background:"#fef2f2", border:"1.5px solid #fecaca", borderRadius:"var(--r-sm)", color:"var(--red)", fontSize:"13px", fontWeight:700, cursor:"pointer" }}>Failed</button>
+                        <div style={{display:"flex",gap:"8px",paddingTop:"12px",borderTop:"1px solid var(--border)"}}>
+                          <button onClick={()=>markDelivered(o.id)} style={{flex:1,padding:"13px",background:"var(--green)",border:"none",borderRadius:"var(--r-sm)",color:"#fff",fontSize:"13px",fontWeight:700,cursor:"pointer"}}>Delivered</button>
+                          <button onClick={()=>markFailed(o.id)} style={{flex:1,padding:"13px",background:"#fef2f2",border:"1.5px solid #fecaca",borderRadius:"var(--r-sm)",color:"var(--red)",fontSize:"13px",fontWeight:700,cursor:"pointer"}}>Failed</button>
                         </div>
                       </div>
                     ))}
@@ -961,39 +960,36 @@ function UpdateTab({ mode, setMode, customDate, setCustomDate, customDateEnd, se
             </div>
           )}
 
-          {/* DELIVERED */}
           {visDelivered.length > 0 && (
             <div>
-              <p style={{ fontSize:"11px", fontWeight:600, color:"var(--green)", textTransform:"uppercase", letterSpacing:".06em", marginBottom:"12px" }}>Delivered ({visDelivered.length})</p>
-              {Object.entries(dGroups).map(([rider, ords]) => (
-                <div key={rider} style={{ marginBottom:"20px" }}>
-                  <div style={{ display:"flex", alignItems:"center", gap:"8px", marginBottom:"8px", padding:"8px 12px", background:"var(--green)", borderRadius:"var(--r-sm)" }}>
-                    <RiderAvatar name={rider} size={26} />
-                    <span style={{ fontFamily:"var(--display)", fontSize:"13px", fontWeight:700, color:"#fff" }}>{rider}</span>
-                    <span style={{ fontSize:"11px", color:"rgba(255,255,255,.55)", marginLeft:"auto" }}>{ords.length} delivered</span>
+              <p style={{fontSize:"11px",fontWeight:600,color:"var(--green)",textTransform:"uppercase",letterSpacing:".06em",marginBottom:"12px"}}>Delivered ({visDelivered.length})</p>
+              {Object.entries(dGroups).map(([rider,ords])=>(
+                <div key={rider} style={{marginBottom:"20px"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"8px",padding:"8px 12px",background:"var(--green)",borderRadius:"var(--r-sm)"}}>
+                    <RiderAvatar name={rider} size={26}/>
+                    <span style={{fontFamily:"var(--display)",fontSize:"13px",fontWeight:700,color:"#fff"}}>{rider}</span>
+                    <span style={{fontSize:"11px",color:"rgba(255,255,255,.55)",marginLeft:"auto"}}>{ords.length} delivered</span>
                   </div>
-                  <div style={{ display:"flex", flexDirection:"column", gap:"8px" }}>
-                    {ords.map(o => (
-                      <div key={o.id} style={{ background:"#ecfdf5", border:"1.5px solid #a7f3d0", borderRadius:"var(--r)", padding:"12px 14px" }}>
-                        <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between" }}>
-                          <div style={{ flex:1 }}>
-                            <p style={{ fontSize:"13px", fontWeight:700 }}>{o.customerName}</p>
-                            {o.phone && <a href={"tel:"+o.phone} style={{ fontSize:"12px", color:"var(--blue)", marginTop:"2px", display:"block", fontWeight:600, textDecoration:"none" }}>{o.phone}</a>}
-                            <p style={{ fontSize:"11px", color:"var(--text-faint)", marginTop:"2px" }}>{o.date}</p>
-                            <div style={{ marginTop:"6px", display:"flex", flexDirection:"column", gap:"3px" }}>
-                              {getProducts(o).map((p,i) => (
-                                <div key={i} style={{ display:"flex", justifyContent:"space-between", padding:"5px 8px", background:"rgba(5,150,105,.06)", borderRadius:"var(--r-sm)" }}>
-                                  <span style={{ fontSize:"12px", fontWeight:600 }}>{p.name} x{p.qty}</span>
-                                  <span style={{ fontSize:"12px", fontWeight:700, color:"var(--green)" }}>{fmt(p.price)}</span>
+                  <div style={{display:"flex",flexDirection:"column",gap:"8px"}}>
+                    {ords.map(o=>(
+                      <div key={o.id} style={{background:"#ecfdf5",border:"1.5px solid #a7f3d0",borderRadius:"var(--r)",padding:"12px 14px"}}>
+                        <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between"}}>
+                          <div style={{flex:1}}>
+                            <p style={{fontSize:"13px",fontWeight:700}}>{o.customerName}</p>
+                            {o.phone&&<a href={"tel:"+o.phone} style={{fontSize:"12px",color:"var(--blue)",marginTop:"2px",display:"block",fontWeight:600,textDecoration:"none"}}>{o.phone}</a>}
+                            <p style={{fontSize:"11px",color:"var(--text-faint)",marginTop:"2px"}}>{o.date}</p>
+                            <div style={{marginTop:"6px",display:"flex",flexDirection:"column",gap:"3px"}}>
+                              {getProducts(o).map((p,i)=>(
+                                <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"5px 8px",background:"rgba(5,150,105,.06)",borderRadius:"var(--r-sm)"}}>
+                                  <span style={{fontSize:"12px",fontWeight:600}}>{p.name} x{p.qty}</span>
+                                  <span style={{fontSize:"12px",fontWeight:700,color:"var(--green)"}}>{fmt(p.price)}</span>
                                 </div>
                               ))}
                             </div>
                           </div>
-                          <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:"6px", marginLeft:"12px", flexShrink:0 }}>
-                            <span style={{ fontFamily:"var(--display)", fontSize:"15px", fontWeight:800, color:"var(--green)" }}>
-                              {fmt(getProducts(o).reduce((s,p)=>s+(Number(p.price)||0),0))}
-                            </span>
-                            <button onClick={() => cancelDelivered(o.id)} style={{ padding:"5px 10px", background:"#fef2f2", border:"1.5px solid #fecaca", borderRadius:"var(--r-sm)", color:"var(--red)", fontSize:"11px", fontWeight:700, cursor:"pointer", whiteSpace:"nowrap" }}>Cancel</button>
+                          <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:"6px",marginLeft:"12px",flexShrink:0}}>
+                            <span style={{fontFamily:"var(--display)",fontSize:"15px",fontWeight:800,color:"var(--green)"}}>{fmt(getProducts(o).reduce((s,p)=>s+(Number(p.price)||0),0))}</span>
+                            <button onClick={()=>cancelDelivered(o.id)} style={{padding:"5px 10px",background:"#fef2f2",border:"1.5px solid #fecaca",borderRadius:"var(--r-sm)",color:"var(--red)",fontSize:"11px",fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>Cancel</button>
                           </div>
                         </div>
                       </div>
@@ -1004,23 +1000,22 @@ function UpdateTab({ mode, setMode, customDate, setCustomDate, customDateEnd, se
             </div>
           )}
 
-          {/* FAILED */}
           {visFailed.length > 0 && (
             <div>
-              <p style={{ fontSize:"11px", fontWeight:600, color:"var(--text-faint)", textTransform:"uppercase", letterSpacing:".06em", marginBottom:"8px" }}>Failed ({visFailed.length})</p>
-              <div style={{ display:"flex", flexDirection:"column", gap:"8px", opacity:.6 }}>
-                {visFailed.map(o => (
-                  <div key={o.id} style={{ background:"#fff", border:"1.5px solid var(--border)", borderRadius:"var(--r)", padding:"10px 14px" }}>
-                    <p style={{ fontSize:"12px", fontWeight:500, color:"var(--text-dim)" }}>{o.customerName} · {o.rider}</p>
-                    <p style={{ fontSize:"11px", color:"var(--text-faint)", marginTop:"2px" }}>{getProducts(o).map(p=>p.name).join(", ")}</p>
+              <p style={{fontSize:"11px",fontWeight:600,color:"var(--text-faint)",textTransform:"uppercase",letterSpacing:".06em",marginBottom:"8px"}}>Failed ({visFailed.length})</p>
+              <div style={{display:"flex",flexDirection:"column",gap:"8px",opacity:.6}}>
+                {visFailed.map(o=>(
+                  <div key={o.id} style={{background:"#fff",border:"1.5px solid var(--border)",borderRadius:"var(--r)",padding:"10px 14px"}}>
+                    <p style={{fontSize:"12px",fontWeight:500,color:"var(--text-dim)"}}>{o.customerName} · {o.rider}</p>
+                    <p style={{fontSize:"11px",color:"var(--text-faint)",marginTop:"2px"}}>{getProducts(o).map(p=>p.name).join(", ")}</p>
                   </div>
                 ))}
               </div>
             </div>
           )}
 
-          {visPending.length===0 && visDelivered.length===0 && visFailed.length===0 && (
-            <p style={{ textAlign:"center", padding:"48px 0", fontSize:"13px", color:"var(--text-faint)" }}>No orders in this period</p>
+          {visPending.length===0&&visDelivered.length===0&&visFailed.length===0&&(
+            <p style={{textAlign:"center",padding:"48px 0",fontSize:"13px",color:"var(--text-faint)"}}>No orders in this period</p>
           )}
         </div>
       )}
