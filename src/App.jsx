@@ -10,7 +10,7 @@ const RIDERS = {
     "Damilola", "Oyindamola", "Philip", "Solomon", "Teemah",
     "Bright", "Jeremiah", "Joseph", "Tommy", "Mr Tobi", "Mr Ade",
     "Segun", "Mr Kingsley", "Mr Ajayi", "Mr John", "Great God",
-    "Mr Sunday", "Mr Kenny", "Olawunmi", "Mr Wilson", "Mr Idris", "Azeez", "Godswill", "Sule", "Olawale"
+    "Mr Sunday", "Mr Kenny", "Olawunmi", "Mr Wilson", "Mr Idris", "Azeez", "Godswill",
   ],
   KETU: ["Semilore", "Miracle", "Yusuf", "Dickson", "Tony", "Habeb", "Lawal", "Ayomide"],
 };
@@ -92,7 +92,7 @@ const VENDORS = {
   "Madam Gift": ["Building block","Magnetic drawing board","Finger Arithmetic","Bubble gun"],
   "KING ROYCE": ["Reachable car charger","Single car charger","5in1 car charger","Executive bag","Handbag","Crossbag"],
   "KYNE-RANDOM": ["Random energy capsule"],
-  "SMART CLEANSER KYNE": ["Smart Cleanser","Sanora capsule","Sanora balm","Verticure"],
+  "SMART CLEANSER KYNE": ["Smart Cleanser","Sanora capsule","Sanora balm"],
   "CEENO LAGOS": ["Nano tapes","Turmeric soaps","Pink lip serum","Shilajit gummies","Brown flower wallpaper","Green flower wallpaper","IMAX SPRAY","Boka toothpaste","Lunavia pen","Fenugreek seed tea"],
   "ISYLIFE": ["Richard mille","Cctv","INVICTA","Lamborghini","Smart watch","Daniel Wellington","Bvlgart watch","Nepic watch"],
   "GLAMOUR TROVE": ["Kids multivitamin"],
@@ -2446,68 +2446,126 @@ function BossView({ onLogout }) {
 
         {tab==="inventory" && (
           <div className="fade-in">
-            <SectionTitle title="All Branches Inventory"/>
-            <PeriodFilter mode={mode} setMode={setMode} customDate={customDate} setCustomDate={setCustomDate} customDateEnd={customDateEnd} setCustomDateEnd={setCustomDateEnd}/>
+            <SectionTitle title="Stock Summary" sub="All branches combined — for vendor reporting"/>
             <input className="k-input" placeholder="🔍 Search vendor or product..." value={bossInvSearch} onChange={e=>setBossInvSearch(e.target.value)} style={{marginBottom:"16px"}}/>
-            {BRANCHES.map(b => {
-              // Stock is always cumulative — never date filtered
-              const vendorMap = buildBossStockMap(b, inventory, orders);
-              const vendorList = Object.keys(vendorMap).filter(v =>
-                !bossInvSearch ||
-                v.toLowerCase().includes(bossInvSearch.toLowerCase()) ||
-                Object.keys(vendorMap[v]).some(p=>p.toLowerCase().includes(bossInvSearch.toLowerCase()))
-              ).sort();
-              if (vendorList.length===0) return null;
+            {(() => {
+              // Build a unified map: vendor -> product -> { received, delivered, remaining }
+              // received = waybill-in at IDIMU (what Kyne received from vendors)
+              // delivered = all delivered orders across ALL branches
+              // remaining = received - delivered (total still in Kyne hands)
+              const unified = {};
+              function ensure(v, n) {
+                if (!unified[v]) unified[v] = {};
+                if (!unified[v][n]) unified[v][n] = { received: 0, delivered: 0, returnedToVendor: 0 };
+              }
+
+              // Waybill-in at IDIMU = total received from vendors
+              inventory.filter(i => i.branch === "IDIMU" && i.type === "waybill-in").forEach(i => {
+                const v=(i.vendor||"").trim(), n=(i.product||"").trim();
+                if (!v||!n) return; ensure(v,n);
+                unified[v][n].received += Number(i.qty)||0;
+              });
+
+              // Waybill-out at IDIMU = returned to vendor (reduces received)
+              inventory.filter(i => i.branch === "IDIMU" && i.type === "waybill-out").forEach(i => {
+                const v=(i.vendor||"").trim(), n=(i.product||"").trim();
+                if (!v||!n||!unified[v]?.[n]) return;
+                unified[v][n].returnedToVendor += Number(i.qty)||0;
+              });
+
+              // Delivered orders across ALL branches
+              orders.filter(o => o.status === "Delivered").forEach(o => {
+                const prods = typeof o.products==="string" ? (() => { try { return JSON.parse(o.products); } catch { return []; } })() : (o.products||[]);
+                prods.forEach(p => {
+                  const v=(p.vendor||"").trim(), n=(p.name||"").trim();
+                  if (!v||!n||!unified[v]?.[n]) return;
+                  unified[v][n].delivered += Number(p.qty)||1;
+                });
+              });
+
+              const vendorList = Object.keys(unified)
+                .filter(v => !bossInvSearch || v.toLowerCase().includes(bossInvSearch.toLowerCase()) || Object.keys(unified[v]).some(p=>p.toLowerCase().includes(bossInvSearch.toLowerCase())))
+                .sort();
+
+              // Summary totals
+              let totalReceived=0, totalDelivered=0, totalRemaining=0;
+              vendorList.forEach(v => Object.values(unified[v]).forEach(s => {
+                const net = s.received - s.returnedToVendor;
+                totalReceived += net;
+                totalDelivered += s.delivered;
+                totalRemaining += net - s.delivered;
+              }));
+
               return (
-                <div key={b} style={{marginBottom:"24px"}}>
-                  <div style={{background:"var(--navy)",borderRadius:"var(--r)",padding:"10px 16px",marginBottom:"10px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                    <p style={{fontFamily:"var(--display)",fontSize:"15px",fontWeight:800,color:"#fff"}}>{b} Branch</p>
-                    <span style={{fontSize:"11px",color:"rgba(255,255,255,.5)"}}>{vendorList.length} vendors</span>
+                <>
+                  {/* Summary bar */}
+                  <div style={{background:"var(--navy)",borderRadius:"var(--r)",padding:"16px",marginBottom:"20px",display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"12px",textAlign:"center"}}>
+                    {[["Total Received",totalReceived,"#6ee7b7"],["Total Delivered",totalDelivered,"#93c5fd"],["Total Remaining",totalRemaining,totalRemaining<0?"#fca5a5":"#fff"]].map(([label,val,color])=>(
+                      <div key={label}>
+                        <p style={{fontSize:"9px",fontWeight:600,color:"rgba(255,255,255,.45)",textTransform:"uppercase",letterSpacing:".08em",marginBottom:"4px"}}>{label}</p>
+                        <p style={{fontFamily:"var(--display)",fontSize:"22px",fontWeight:800,color,lineHeight:1}}>{val}</p>
+                      </div>
+                    ))}
                   </div>
-                  {vendorList.map(vendor=>{
-                    const products = Object.entries(vendorMap[vendor])
-                      .filter(([name])=> !bossInvSearch || vendor.toLowerCase().includes(bossInvSearch.toLowerCase()) || name.toLowerCase().includes(bossInvSearch.toLowerCase()))
-                      .map(([name,s])=>{
-                        const remaining = b==="IDIMU"
-                          ? s.received - s.returnedTotal - s.transferredOut + s.transferredIn - s.delivered
-                          : s.transferredIn - s.transferredOut - s.delivered;
-                        return {name,...s,remaining};
-                      });
-                    if (products.length===0) return null;
+
+                  {vendorList.map(vendor => {
+                    const products = Object.entries(unified[vendor])
+                      .filter(([name]) => !bossInvSearch || vendor.toLowerCase().includes(bossInvSearch.toLowerCase()) || name.toLowerCase().includes(bossInvSearch.toLowerCase()))
+                      .map(([name, s]) => {
+                        const netReceived = s.received - s.returnedToVendor;
+                        const remaining = netReceived - s.delivered;
+                        return { name, received: netReceived, delivered: s.delivered, remaining };
+                      })
+                      .filter(item => item.received > 0 || item.delivered > 0);
+
+                    if (products.length === 0) return null;
+
+                    const vReceived  = products.reduce((s,p)=>s+p.received, 0);
+                    const vDelivered = products.reduce((s,p)=>s+p.delivered, 0);
+                    const vRemaining = products.reduce((s,p)=>s+p.remaining, 0);
+
                     return (
-                      <div key={vendor} style={{marginBottom:"10px"}}>
-                        <p style={{fontSize:"11px",fontWeight:700,color:"var(--blue)",textTransform:"uppercase",letterSpacing:".06em",marginBottom:"6px",paddingLeft:"4px"}}>{vendor}</p>
-                        <div style={{display:"flex",flexDirection:"column",gap:"4px"}}>
-                          {products.map(item=>{
-                            const stats = b==="IDIMU"
-                              ? [["Received",item.received,"var(--green)"],["Sent Out",item.transferredOut,"var(--amber)"],["Delivered",item.delivered,"var(--blue)"],["Remaining",item.remaining,item.remaining<=0?"var(--red)":"var(--blue)"]]
-                              : [["Transferred In",item.transferredIn,"var(--green)"],["Delivered",item.delivered,"var(--blue)"],["Remaining",item.remaining,item.remaining<=0?"var(--red)":"var(--blue)"]];
-                            return (
-                              <div key={item.name} style={{
-                                background:item.remaining<=0?"#fef2f2":"#fff",
-                                border:`1.5px solid ${item.remaining<=0?"#fecaca":"var(--border)"}`,
-                                borderRadius:"var(--r-sm)", padding:"8px 14px",
-                                display:"flex", alignItems:"center", justifyContent:"space-between"
-                              }}>
-                                <p style={{fontSize:"12px",fontWeight:600,color:item.remaining<=0?"var(--red)":"var(--text)"}}>{item.name}</p>
-                                <div style={{display:"flex",gap:"10px",alignItems:"center"}}>
-                                  {stats.map(([label,val,color])=>(
-                                    <div key={label} style={{textAlign:"center",minWidth:"52px"}}>
-                                      <p style={{fontSize:"8px",color:"var(--text-faint)",fontWeight:600,marginBottom:"2px"}}>{label}</p>
-                                      <p style={{fontFamily:"var(--display)",fontSize:"14px",fontWeight:800,color}}>{val}</p>
-                                    </div>
-                                  ))}
-                                </div>
+                      <div key={vendor} style={{marginBottom:"16px"}}>
+                        {/* Vendor header */}
+                        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"6px",padding:"8px 12px",background:"var(--blue-pale)",border:"1.5px solid var(--blue-pale2)",borderRadius:"var(--r-sm)"}}>
+                          <p style={{fontSize:"12px",fontWeight:800,color:"var(--blue)",textTransform:"uppercase",letterSpacing:".06em"}}>{vendor}</p>
+                          <div style={{display:"flex",gap:"16px"}}>
+                            <span style={{fontSize:"10px",color:"var(--green)",fontWeight:700}}>In: {vReceived}</span>
+                            <span style={{fontSize:"10px",color:"var(--blue)",fontWeight:700}}>Out: {vDelivered}</span>
+                            <span style={{fontSize:"10px",color:vRemaining<=0?"var(--red)":"var(--text-dim)",fontWeight:700}}>Left: {vRemaining}</span>
+                          </div>
+                        </div>
+                        {/* Products */}
+                        <div style={{display:"flex",flexDirection:"column",gap:"3px"}}>
+                          {products.map(item => (
+                            <div key={item.name} style={{
+                              background: item.remaining <= 0 ? "#fef2f2" : "#fff",
+                              border: `1px solid ${item.remaining <= 0 ? "#fecaca" : "var(--border)"}`,
+                              borderRadius: "var(--r-sm)", padding: "8px 12px",
+                              display: "flex", alignItems: "center", justifyContent: "space-between"
+                            }}>
+                              <p style={{fontSize:"13px",fontWeight:600,color:item.remaining<=0?"var(--red)":"var(--text)"}}>{item.name}</p>
+                              <div style={{display:"flex",gap:"20px",alignItems:"center"}}>
+                                {[["Received",item.received,"var(--green)"],["Delivered",item.delivered,"var(--blue)"],["Remaining",item.remaining,item.remaining<=0?"var(--red)":"var(--text)"]].map(([label,val,color])=>(
+                                  <div key={label} style={{textAlign:"center",minWidth:"56px"}}>
+                                    <p style={{fontSize:"8px",color:"var(--text-faint)",fontWeight:600,marginBottom:"2px",textTransform:"uppercase"}}>{label}</p>
+                                    <p style={{fontFamily:"var(--display)",fontSize:"16px",fontWeight:800,color}}>{val}</p>
+                                  </div>
+                                ))}
                               </div>
-                            );
-                          })}
+                            </div>
+                          ))}
                         </div>
                       </div>
                     );
                   })}
-                </div>
+
+                  {vendorList.length === 0 && (
+                    <p style={{textAlign:"center",padding:"48px 0",fontSize:"13px",color:"var(--text-faint)"}}>No inventory data found</p>
+                  )}
+                </>
               );
-            })}
+            })()}
           </div>
         )}
 
