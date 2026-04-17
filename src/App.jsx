@@ -81,7 +81,7 @@ const VENDORS = {
   "BAZAKI": ["Ginseng capsule","Ginseng Root tea","Chancaflow","Deos","Maca ginseng"],
   "E-CLAX": ["SAAM Renewal face cream","Utogru Teeth whitening","Bright toothpaste"],
   "SYSTERA": ["Snake venom","SAAM Renewal face cream"],
-  "ABBEX": ["Yoxier scar cream","Maycheer purifying gel"],
+  "ABBEX": ["Yoxier scar cream","Maycheer purifying gel","Basil deep mask"],
   "ZAKI": ["Beevenom"],
   "CALLYTUS": ["Biotin and collagen","Nada plus"],
   "TSEIGBESA": ["Beevana"],
