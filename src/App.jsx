@@ -71,7 +71,7 @@ function getBonusRate(n, riderName) {
 const VENDORS = {
   "LADEX": ["Jandes","Boshjex","Boshjex pro","Xebenco powder","Propazi"],
   "TOPMO": ["Elipy cap","Elipy balm","Sabbana","HYPERTOP","Vertidem","Topmo cleanser tea","Topmo capsule","Senior cap","Topmo detox","Prosma","Venaba","Tabizo","Charzzy","Elano","Vaniso","Cendez","Sb latein","Suyem","Zavina","Yemit","Pinallia Capsule","Lureza tea","Devura capsule","Tavora Tea","Gotura tea"],
-  "LASUMAX GROUP": ["Padosa","TUNFALZ","Kidema oil","Kidema capsule","Lavosa","Lasumax tea","Lasumax cap","Provena capsule","Provena cleanser","Kenzai","Yenita"],
+  "LASUMAX GROUP": ["Padosa","TUNFALZ","Kidema oil","Kidema capsule","Lavosa","Lasumax tea","Lasumax cap","Provena capsule","Provena cleanser","Kenzai","Yenita","Tavora Tea","Gotura tea"],
   "MUMART": ["Eye gel","Guava boost","PSORIASIS Cream","5 in 1 facial","Lizard spray","Collagen oil","Foot peeling cream","Stamina pro","Collagen face mask","Retinol antioxidants"],
   "EDZU": ["Davigormax","Davigormax powder","Venature","Yilest","QISE Anti wrinkle","A pack","Shilajit capsule","Retinol lotion","Fyto infection flusher"],
   "AKOVIL": ["Chillflex","PYRU TEA","Slimcore","Cendez cleanser","Joint & bone","Wart removal","Beevenom","Beevana","Bhamiza TEA","Dim Capsule","Dim tea","VIMEX tea"],
@@ -97,7 +97,7 @@ const VENDORS = {
   "ISYLIFE": ["Richard mille","Cctv","INVICTA","Lamborghini","Smart watch","Daniel Wellington","Bvlgart watch","Nepic watch"],
   "GLAMOUR TROVE": ["Kids multivitamin"],
   "SENDJON": ["Renewal face cream","Repair Scar cream","Body cream","Acne Serum","Eye cream","Advanced Daily SAAM","Facial cleanser","Micellar water","Cotton pad","Eyebrow","Primeman potency","Primeman booster","Big wand","Pocket pussy","Small wand","Rose","Lubricant","Vibrant dildos","Double rose sucker","Double rose licker","Vibant strap","Non vibrant strap","David vibrator","BDSM skit","Flamingo","Big Pussy"],
-  "Zavina Group": ["Zavina tea","Veritol cap","Vetra tea","Gotura capsule"],
+  "Zavina Group": ["Zavina tea","Veritol cap","Vetra tea","Gotura capsule","Pinallia Capsule","Lureza tea","Devura capsule","Zavob capsule],
   "SEFWAY Group": ["Sefway Herbal"],
   "Awoof Mall": ["Wireless Mic","Sx8mic","Ultrapod PRO","Sx31mic","Wireless hand held"],
   "BMP Group": ["Lenstone Herbal"],
